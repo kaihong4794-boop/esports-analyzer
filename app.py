@@ -1,23 +1,13 @@
 import streamlit as st
 import pandas as pd
-import os
 from datetime import date
 
 st.title("运动期望值分析器 🏆")
 
+if "records" not in st.session_state:
+    st.session_state["records"] = []
+
 tab1, tab2, tab3, tab4 = st.tabs(["⚔️ 电竞", "⚽ 足球", "🏀 篮球", "📋 记录"])
-
-RECORDS_FILE = "records.csv"
-
-def load_records():
-    if os.path.exists(RECORDS_FILE):
-        return pd.read_csv(RECORDS_FILE)
-    return pd.DataFrame(columns=["日期", "运动", "主队", "客队", "主队加权胜率", "客队加权胜率", "主队期望值", "客队期望值", "注额(RM)", "押注队伍", "实际结果", "盈亏(RM)"])
-
-def save_record(record):
-    df = load_records()
-    df = pd.concat([df, pd.DataFrame([record])], ignore_index=True)
-    df.to_csv(RECORDS_FILE, index=False)
 
 # ==================== 电竞 ====================
 with tab1:
@@ -71,14 +61,11 @@ with tab1:
         h_ev = (h_wr*(e_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr*(e_away_odds-1)*100) - ((1-a_wr)*100)
 
-        st.session_state["last_result"] = {
-            "运动": "电竞",
-            "主队": e_home_name,
-            "客队": e_away_name,
-            "主队加权胜率": f"{h_wr:.1%}",
-            "客队加权胜率": f"{a_wr:.1%}",
-            "主队期望值": f"{h_ev:.2f}",
-            "客队期望值": f"{a_ev:.2f}",
+        st.session_state["e_result"] = {
+            "h_wr": h_wr, "a_wr": a_wr,
+            "h_ev": h_ev, "a_ev": a_ev,
+            "h_odds": e_home_odds, "a_odds": e_away_odds,
+            "h_name": e_home_name, "a_name": e_away_name
         }
 
         st.divider()
@@ -93,7 +80,6 @@ with tab1:
                 st.success("✅ 正期望值")
             else:
                 st.error("❌ 负期望值")
-
         with col6:
             st.subheader(e_away_name)
             st.metric("加权胜率", f"{a_wr:.1%}")
@@ -105,41 +91,36 @@ with tab1:
             else:
                 st.error("❌ 负期望值")
 
+    if "e_result" in st.session_state:
+        r = st.session_state["e_result"]
         st.divider()
         st.subheader("💾 保存记录")
         col7, col8, col9 = st.columns(3)
         with col7:
-            stake = st.number_input("注额 (RM)", min_value=0, value=100, key="e_stake")
+            e_stake = st.number_input("注额 (RM)", min_value=0, value=100, key="e_stake")
         with col8:
-            bet_team = st.selectbox("押注队伍", [e_home_name, e_away_name], key="e_bet_team")
+            e_bet = st.selectbox("押注队伍", [r["h_name"], r["a_name"]], key="e_bet")
         with col9:
-            result = st.selectbox("实际结果", ["未知", "赢", "输", "平"], key="e_result")
+            e_res = st.selectbox("实际结果", ["待定", "赢", "输", "平"], key="e_res")
 
         if st.button("保存记录", key="e_save"):
-            if result != "未知":
-                if bet_team == e_home_name:
-                    odds_used = e_home_odds
-                else:
-                    odds_used = e_away_odds
-                pnl = (odds_used - 1) * stake if result == "赢" else (-stake if result == "输" else 0)
-                record = {
-                    "日期": str(date.today()),
-                    "运动": "电竞",
-                    "主队": e_home_name,
-                    "客队": e_away_name,
-                    "主队加权胜率": f"{h_wr:.1%}",
-                    "客队加权胜率": f"{a_wr:.1%}",
-                    "主队期望值": f"{h_ev:.2f}",
-                    "客队期望值": f"{a_ev:.2f}",
-                    "注额(RM)": stake,
-                    "押注队伍": bet_team,
-                    "实际结果": result,
-                    "盈亏(RM)": pnl
-                }
-                save_record(record)
-                st.success("✅ 记录已保存！")
-            else:
-                st.warning("请先选择实际结果！")
+            odds_used = r["h_odds"] if e_bet == r["h_name"] else r["a_odds"]
+            pnl = (odds_used-1)*e_stake if e_res == "赢" else (-e_stake if e_res == "输" else 0)
+            st.session_state["records"].append({
+                "日期": str(date.today()),
+                "运动": "电竞",
+                "主队": r["h_name"],
+                "客队": r["a_name"],
+                "主队加权胜率": f"{r['h_wr']:.1%}",
+                "客队加权胜率": f"{r['a_wr']:.1%}",
+                "主队期望值": f"{r['h_ev']:.2f}",
+                "客队期望值": f"{r['a_ev']:.2f}",
+                "注额(RM)": e_stake,
+                "押注队伍": e_bet,
+                "实际结果": e_res,
+                "盈亏(RM)": pnl
+            })
+            st.success("✅ 记录已保存！去📋记录查看")
 
 # ==================== 足球 ====================
 with tab2:
@@ -250,6 +231,13 @@ with tab2:
         h_ev = (h_wr*(f_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr*(f_away_odds-1)*100) - ((1-a_wr)*100)
 
+        st.session_state["f_result"] = {
+            "h_wr": h_wr, "a_wr": a_wr,
+            "h_ev": h_ev, "a_ev": a_ev,
+            "h_odds": f_home_odds, "a_odds": f_away_odds,
+            "h_name": f_home_name, "a_name": f_away_name
+        }
+
         st.divider()
         col7, col8 = st.columns(2)
         with col7:
@@ -262,7 +250,6 @@ with tab2:
                 st.success("✅ 正期望值")
             else:
                 st.error("❌ 负期望值")
-
         with col8:
             st.subheader(f_away_name)
             st.metric("加权胜率", f"{a_wr:.1%}")
@@ -274,41 +261,36 @@ with tab2:
             else:
                 st.error("❌ 负期望值")
 
+    if "f_result" in st.session_state:
+        r = st.session_state["f_result"]
         st.divider()
         st.subheader("💾 保存记录")
         col9, col10, col11 = st.columns(3)
         with col9:
-            stake = st.number_input("注额 (RM)", min_value=0, value=100, key="f_stake")
+            f_stake = st.number_input("注额 (RM)", min_value=0, value=100, key="f_stake")
         with col10:
-            bet_team = st.selectbox("押注队伍", [f_home_name, f_away_name], key="f_bet_team")
+            f_bet = st.selectbox("押注队伍", [r["h_name"], r["a_name"]], key="f_bet")
         with col11:
-            result = st.selectbox("实际结果", ["未知", "赢", "输", "平"], key="f_result")
+            f_res = st.selectbox("实际结果", ["待定", "赢", "输", "平"], key="f_res")
 
         if st.button("保存记录", key="f_save"):
-            if result != "未知":
-                if bet_team == f_home_name:
-                    odds_used = f_home_odds
-                else:
-                    odds_used = f_away_odds
-                pnl = (odds_used - 1) * stake if result == "赢" else (-stake if result == "输" else 0)
-                record = {
-                    "日期": str(date.today()),
-                    "运动": "足球",
-                    "主队": f_home_name,
-                    "客队": f_away_name,
-                    "主队加权胜率": f"{h_wr:.1%}",
-                    "客队加权胜率": f"{a_wr:.1%}",
-                    "主队期望值": f"{h_ev:.2f}",
-                    "客队期望值": f"{a_ev:.2f}",
-                    "注额(RM)": stake,
-                    "押注队伍": bet_team,
-                    "实际结果": result,
-                    "盈亏(RM)": pnl
-                }
-                save_record(record)
-                st.success("✅ 记录已保存！")
-            else:
-                st.warning("请先选择实际结果！")
+            odds_used = r["h_odds"] if f_bet == r["h_name"] else r["a_odds"]
+            pnl = (odds_used-1)*f_stake if f_res == "赢" else (-f_stake if f_res == "输" else 0)
+            st.session_state["records"].append({
+                "日期": str(date.today()),
+                "运动": "足球",
+                "主队": r["h_name"],
+                "客队": r["a_name"],
+                "主队加权胜率": f"{r['h_wr']:.1%}",
+                "客队加权胜率": f"{r['a_wr']:.1%}",
+                "主队期望值": f"{r['h_ev']:.2f}",
+                "客队期望值": f"{r['a_ev']:.2f}",
+                "注额(RM)": f_stake,
+                "押注队伍": f_bet,
+                "实际结果": f_res,
+                "盈亏(RM)": pnl
+            })
+            st.success("✅ 记录已保存！去📋记录查看")
 
 # ==================== 篮球 ====================
 with tab3:
@@ -362,6 +344,13 @@ with tab3:
         h_ev = (h_wr*(b_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr*(b_away_odds-1)*100) - ((1-a_wr)*100)
 
+        st.session_state["b_result"] = {
+            "h_wr": h_wr, "a_wr": a_wr,
+            "h_ev": h_ev, "a_ev": a_ev,
+            "h_odds": b_home_odds, "a_odds": b_away_odds,
+            "h_name": b_home_name, "a_name": b_away_name
+        }
+
         st.divider()
         col5, col6 = st.columns(2)
         with col5:
@@ -374,7 +363,6 @@ with tab3:
                 st.success("✅ 正期望值")
             else:
                 st.error("❌ 负期望值")
-
         with col6:
             st.subheader(b_away_name)
             st.metric("加权胜率", f"{a_wr:.1%}")
@@ -386,58 +374,55 @@ with tab3:
             else:
                 st.error("❌ 负期望值")
 
+    if "b_result" in st.session_state:
+        r = st.session_state["b_result"]
         st.divider()
         st.subheader("💾 保存记录")
         col7, col8, col9 = st.columns(3)
         with col7:
-            stake = st.number_input("注额 (RM)", min_value=0, value=100, key="b_stake")
+            b_stake = st.number_input("注额 (RM)", min_value=0, value=100, key="b_stake")
         with col8:
-            bet_team = st.selectbox("押注队伍", [b_home_name, b_away_name], key="b_bet_team")
+            b_bet = st.selectbox("押注队伍", [r["h_name"], r["a_name"]], key="b_bet")
         with col9:
-            result = st.selectbox("实际结果", ["未知", "赢", "输"], key="b_result")
+            b_res = st.selectbox("实际结果", ["待定", "赢", "输"], key="b_res")
 
         if st.button("保存记录", key="b_save"):
-            if result != "未知":
-                if bet_team == b_home_name:
-                    odds_used = b_home_odds
-                else:
-                    odds_used = b_away_odds
-                pnl = (odds_used - 1) * stake if result == "赢" else -stake
-                record = {
-                    "日期": str(date.today()),
-                    "运动": "篮球",
-                    "主队": b_home_name,
-                    "客队": b_away_name,
-                    "主队加权胜率": f"{h_wr:.1%}",
-                    "客队加权胜率": f"{a_wr:.1%}",
-                    "主队期望值": f"{h_ev:.2f}",
-                    "客队期望值": f"{a_ev:.2f}",
-                    "注额(RM)": stake,
-                    "押注队伍": bet_team,
-                    "实际结果": result,
-                    "盈亏(RM)": pnl
-                }
-                save_record(record)
-                st.success("✅ 记录已保存！")
-            else:
-                st.warning("请先选择实际结果！")
+            odds_used = r["h_odds"] if b_bet == r["h_name"] else r["a_odds"]
+            pnl = (odds_used-1)*b_stake if b_res == "赢" else (-b_stake if b_res == "输" else 0)
+            st.session_state["records"].append({
+                "日期": str(date.today()),
+                "运动": "篮球",
+                "主队": r["h_name"],
+                "客队": r["a_name"],
+                "主队加权胜率": f"{r['h_wr']:.1%}",
+                "客队加权胜率": f"{r['a_wr']:.1%}",
+                "主队期望值": f"{r['h_ev']:.2f}",
+                "客队期望值": f"{r['a_ev']:.2f}",
+                "注额(RM)": b_stake,
+                "押注队伍": b_bet,
+                "实际结果": b_res,
+                "盈亏(RM)": pnl
+            })
+            st.success("✅ 记录已保存！去📋记录查看")
 
 # ==================== 记录 ====================
 with tab4:
     st.header("📋 历史记录")
 
-    df = load_records()
-
-    if df.empty:
+    if len(st.session_state["records"]) == 0:
         st.info("还没有记录，去分析一场比赛然后保存吧！")
     else:
-        # 统计
-        total = len(df)
-        wins = len(df[df["实际结果"] == "赢"])
-        losses = len(df[df["实际结果"] == "输"])
-        total_pnl = df["盈亏(RM)"].sum()
+        df = pd.DataFrame(st.session_state["records"])
 
-        col1, col2, col3, col4 = st.columns(4)
+        # 统计（只算已知结果）
+        known = df[df["实际结果"] != "待定"]
+        total = len(df)
+        wins = len(known[known["实际结果"] == "赢"])
+        losses = len(known[known["实际结果"] == "输"])
+        pending = len(df[df["实际结果"] == "待定"])
+        total_pnl = known["盈亏(RM)"].sum()
+
+        col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
             st.metric("总记录", total)
         with col2:
@@ -445,11 +430,37 @@ with tab4:
         with col3:
             st.metric("负场", losses)
         with col4:
+            st.metric("待定", pending)
+        with col5:
             st.metric("总盈亏", f"RM{total_pnl:.2f}")
 
         st.divider()
         st.dataframe(df, use_container_width=True)
 
-        # 下载按钮
+        # 编辑待定记录
+        pending_df = df[df["实际结果"] == "待定"]
+        if len(pending_df) > 0:
+            st.divider()
+            st.subheader("✏️ 更新待定记录")
+            pending_options = [f"{row['日期']} | {row['主队']} vs {row['客队']}" for _, row in pending_df.iterrows()]
+            selected = st.selectbox("选择要更新的比赛", pending_options)
+            new_result = st.selectbox("实际结果", ["赢", "输", "平"], key="edit_result")
+
+            if st.button("更新结果", key="edit_save"):
+                idx = pending_options.index(selected)
+                actual_idx = pending_df.index[idx]
+                record = st.session_state["records"][actual_idx]
+                record["实际结果"] = new_result
+                if new_result == "赢":
+                    odds = record["注额(RM)"]
+                    record["盈亏(RM)"] = (float(record["主队期望值"]) if record["押注队伍"] == record["主队"] else float(record["客队期望值"]))
+                elif new_result == "输":
+                    record["盈亏(RM)"] = -record["注额(RM)"]
+                else:
+                    record["盈亏(RM)"] = 0
+                st.success("✅ 记录已更新！")
+                st.rerun()
+
+        st.divider()
         csv = df.to_csv(index=False).encode("utf-8")
-        st.download_button("📥 下载记录 (CSV)", csv, "records.csv", "text/csv")
+        st.download_button("📥 下载记录", csv, "records.csv", "text/csv")
