@@ -56,21 +56,29 @@ with tab1:
         h_ev = (h_wr*(e_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr*(e_away_odds-1)*100) - ((1-a_wr)*100)
 
+        st.divider()
         col5, col6 = st.columns(2)
         with col5:
             st.subheader(e_home_name)
             st.metric("加权胜率", f"{h_wr:.1%}")
             st.metric("隐含概率", f"{1/e_home_odds:.1%}")
             st.metric("优势差距", f"{h_wr - 1/e_home_odds:+.1%}")
-            st.metric("期望值(RM100)", f"RM{h_ev:.2f}")
-            st.success("✅ 正期望值") if h_ev > 0 else st.error("❌ 负期望值")
+            st.metric("期望值 (RM100)", f"RM{h_ev:.2f}")
+            if h_ev > 0:
+                st.success("✅ 正期望值")
+            else:
+                st.error("❌ 负期望值")
+
         with col6:
             st.subheader(e_away_name)
             st.metric("加权胜率", f"{a_wr:.1%}")
             st.metric("隐含概率", f"{1/e_away_odds:.1%}")
             st.metric("优势差距", f"{a_wr - 1/e_away_odds:+.1%}")
-            st.metric("期望值(RM100)", f"RM{a_ev:.2f}")
-            st.success("✅ 正期望值") if a_ev > 0 else st.error("❌ 负期望值")
+            st.metric("期望值 (RM100)", f"RM{a_ev:.2f}")
+            if a_ev > 0:
+                st.success("✅ 正期望值")
+            else:
+                st.error("❌ 负期望值")
 
 # ==================== 足球 ====================
 with tab2:
@@ -85,7 +93,6 @@ with tab2:
         f_away_odds = st.number_input("客队赔率", min_value=1.01, value=2.0, step=0.01, key="f_away_odds")
 
     st.divider()
-
     venue = st.radio("这场比赛场地", ["主队主场", "客队主场", "中立场"], horizontal=True, key="f_venue")
 
     def goal_diff_weight(scored, conceded):
@@ -117,15 +124,12 @@ with tab2:
 
         home_wr = calc(home_scores)
         away_wr = calc(away_scores)
-
         if not home_scores: return away_wr
         if not away_scores: return home_wr
         return (home_wr * w_home) + (away_wr * w_away)
 
-    # 主队输入
     st.subheader(f"📊 {f_home_name} 比赛记录")
     col3, col4 = st.columns(2)
-
     fh_home_scores = []
     fh_away_scores = []
 
@@ -152,11 +156,8 @@ with tab2:
             fh_away_scores.append((g1, g2))
 
     st.divider()
-
-    # 客队输入
     st.subheader(f"📊 {f_away_name} 比赛记录")
     col5, col6 = st.columns(2)
-
     fa_home_scores = []
     fa_away_scores = []
 
@@ -188,21 +189,30 @@ with tab2:
         h_ev = (h_wr*(f_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr*(f_away_odds-1)*100) - ((1-a_wr)*100)
 
+        st.divider()
         col7, col8 = st.columns(2)
         with col7:
             st.subheader(f_home_name)
             st.metric("加权胜率", f"{h_wr:.1%}")
             st.metric("隐含概率", f"{1/f_home_odds:.1%}")
             st.metric("优势差距", f"{h_wr - 1/f_home_odds:+.1%}")
-            st.metric("期望值(RM100)", f"RM{h_ev:.2f}")
-            st.success("✅ 正期望值") if h_ev > 0 else st.error("❌ 负期望值")
+            st.metric("期望值 (RM100)", f"RM{h_ev:.2f}")
+            if h_ev > 0:
+                st.success("✅ 正期望值")
+            else:
+                st.error("❌ 负期望值")
+
         with col8:
             st.subheader(f_away_name)
             st.metric("加权胜率", f"{a_wr:.1%}")
             st.metric("隐含概率", f"{1/f_away_odds:.1%}")
             st.metric("优势差距", f"{a_wr - 1/f_away_odds:+.1%}")
-            st.metric("期望值(RM100)", f"RM{a_ev:.2f}")
-            st.success("✅ 正期望值") if a_ev > 0 else st.error("❌ 负期望值")
+            st.metric("期望值 (RM100)", f"RM{a_ev:.2f}")
+            if a_ev > 0:
+                st.success("✅ 正期望值")
+            else:
+                st.error("❌ 负期望值")
+
 # ==================== 篮球 ====================
 with tab3:
     st.header("篮球期望值分析器")
@@ -255,18 +265,26 @@ with tab3:
         h_ev = (h_wr*(b_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr*(b_away_odds-1)*100) - ((1-a_wr)*100)
 
+        st.divider()
         col5, col6 = st.columns(2)
         with col5:
             st.subheader(b_home_name)
             st.metric("加权胜率", f"{h_wr:.1%}")
             st.metric("隐含概率", f"{1/b_home_odds:.1%}")
             st.metric("优势差距", f"{h_wr - 1/b_home_odds:+.1%}")
-            st.metric("期望值(RM100)", f"RM{h_ev:.2f}")
-            st.success("✅ 正期望值") if h_ev > 0 else st.error("❌ 负期望值")
+            st.metric("期望值 (RM100)", f"RM{h_ev:.2f}")
+            if h_ev > 0:
+                st.success("✅ 正期望值")
+            else:
+                st.error("❌ 负期望值")
+
         with col6:
             st.subheader(b_away_name)
             st.metric("加权胜率", f"{a_wr:.1%}")
             st.metric("隐含概率", f"{1/b_away_odds:.1%}")
             st.metric("优势差距", f"{a_wr - 1/b_away_odds:+.1%}")
-            st.metric("期望值(RM100)", f"RM{a_ev:.2f}")
-            st.success("✅ 正期望值") if a_ev > 0 else st.error("❌ 负期望值")
+            st.metric("期望值 (RM100)", f"RM{a_ev:.2f}")
+            if a_ev > 0:
+                st.success("✅ 正期望值")
+            else:
+                st.error("❌ 负期望值")
