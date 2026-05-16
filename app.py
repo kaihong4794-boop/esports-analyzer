@@ -1,24 +1,52 @@
+import gspread
+from google.oauth2.service_account import Credentials
 import streamlit as st
 import pandas as pd
 from datetime import date
 
-st.title("运动期望值分析器 🏆")
+# ==================== Google Sheets ====================
+SHEET_ID = "1LWzu7jwRan5-WSGhWUxnmwCLJ0iyxhVH07bLojGD-3s"
+SCOPES = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+HEADERS = ["日期","运动","主队","客队","主队加权胜率","客队加权胜率","主队期望值","客队期望值","注额(RM)","押注队伍","实际结果","盈亏(RM)"]
 
-if "records" not in st.session_state:
-    st.session_state["records"] = []
+def get_sheet():
+    creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+    client = gspread.authorize(creds)
+    return client.open_by_key(SHEET_ID).sheet1
+
+def save_to_sheet(record):
+    try:
+        sheet = get_sheet()
+        if sheet.row_count <= 1 and not sheet.cell(1,1).value:
+            sheet.append_row(HEADERS)
+        sheet.append_row([record.get(h, "") for h in HEADERS])
+    except Exception as e:
+        st.error(f"Google Sheets 保存失败: {e}")
+
+def load_from_sheet():
+    try:
+        sheet = get_sheet()
+        data = sheet.get_all_records()
+        return pd.DataFrame(data) if data else pd.DataFrame(columns=HEADERS)
+    except:
+        return pd.DataFrame(columns=HEADERS)
+
+def update_sheet_row(row_idx, result, pnl):
+    try:
+        sheet = get_sheet()
+        sheet.update_cell(row_idx + 2, HEADERS.index("实际结果") + 1, result)
+        sheet.update_cell(row_idx + 2, HEADERS.index("盈亏(RM)") + 1, pnl)
+    except Exception as e:
+        st.error(f"更新失败: {e}")
+
+# ==================== App ====================
+st.title("运动期望值分析器 🏆")
 
 tab1, tab2, tab3, tab4 = st.tabs(["⚔️ 电竞", "⚽ 足球", "🏀 篮球", "📋 记录"])
 
 # ==================== 电竞 ====================
 with tab1:
     st.header("电竞期望值分析器")
-
-    score_weights_esports = {
-        "2-0 赢": 1.0,
-        "2-1 赢": 0.7,
-        "1-2 输": 0.4,
-        "0-2 输": 0.2
-    }
 
     col1, col2 = st.columns(2)
     with col1:
@@ -29,6 +57,15 @@ with tab1:
         e_away_odds = st.number_input("客队赔率", min_value=1.01, value=2.0, step=0.01, key="e_away_odds")
 
     st.divider()
+    bo_format = st.radio("比赛格式", ["BO3", "BO5"], horizontal=True, key="bo_format")
+
+    if bo_format == "BO3":
+        score_options = ["2-0 赢", "2-1 赢", "1-2 输", "0-2 输"]
+        score_weights = {"2-0 赢": 1.0, "2-1 赢": 0.7, "1-2 输": 0.4, "0-2 输": 0.2}
+    else:
+        score_options = ["3-0 赢", "3-1 赢", "3-2 赢", "2-3 输", "1-3 输", "0-3 输"]
+        score_weights = {"3-0 赢": 1.0, "3-1 赢": 0.8, "3-2 赢": 0.6, "2-3 输": 0.4, "1-3 输": 0.25, "0-3 输": 0.1}
+
     num_matches_e = st.slider("最近几场比赛？", 1, 5, 5, key="e_slider")
 
     col3, col4 = st.columns(2)
@@ -38,13 +75,13 @@ with tab1:
     with col3:
         st.subheader(f"{e_home_name} 最近{num_matches_e}场")
         for i in range(num_matches_e):
-            v = st.selectbox(f"第{i+1}场", list(score_weights_esports.keys()), key=f"eh{i}")
+            v = st.selectbox(f"第{i+1}场", score_options, key=f"eh{i}")
             e_home_vars.append(v)
 
     with col4:
         st.subheader(f"{e_away_name} 最近{num_matches_e}场")
         for i in range(num_matches_e):
-            v = st.selectbox(f"第{i+1}场", list(score_weights_esports.keys()), key=f"ea{i}")
+            v = st.selectbox(f"第{i+1}场", score_options, key=f"ea{i}")
             e_away_vars.append(v)
 
     if st.button("计算", key="e_calc", type="primary"):
@@ -56,8 +93,8 @@ with tab1:
                 win_w += (1 if "赢" in v else 0) * weights[v] * base
             return win_w / total_w
 
-        h_wr = e_winrate(e_home_vars, score_weights_esports)
-        a_wr = e_winrate(e_away_vars, score_weights_esports)
+        h_wr = e_winrate(e_home_vars, score_weights)
+        a_wr = e_winrate(e_away_vars, score_weights)
         h_ev = (h_wr*(e_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr*(e_away_odds-1)*100) - ((1-a_wr)*100)
 
@@ -106,7 +143,7 @@ with tab1:
         if st.button("保存记录", key="e_save"):
             odds_used = r["h_odds"] if e_bet == r["h_name"] else r["a_odds"]
             pnl = (odds_used-1)*e_stake if e_res == "赢" else (-e_stake if e_res == "输" else 0)
-            st.session_state["records"].append({
+            record = {
                 "日期": str(date.today()),
                 "运动": "电竞",
                 "主队": r["h_name"],
@@ -119,8 +156,9 @@ with tab1:
                 "押注队伍": e_bet,
                 "实际结果": e_res,
                 "盈亏(RM)": pnl
-            })
-            st.success("✅ 记录已保存！去📋记录查看")
+            }
+            save_to_sheet(record)
+            st.success("✅ 记录已保存到 Google Sheets！")
 
 # ==================== 足球 ====================
 with tab2:
@@ -145,89 +183,64 @@ with tab2:
         elif diff >= -2: return 0.15
         else: return 0.05
 
-    def f_winrate_combined(home_scores, away_scores, is_home_team, venue):
-        if venue == "主队主场":
-            w_home, w_away = (0.7, 0.3) if is_home_team else (0.3, 0.7)
-        elif venue == "客队主场":
-            w_home, w_away = (0.3, 0.7) if is_home_team else (0.7, 0.3)
-        else:
-            w_home, w_away = 0.5, 0.5
+    num_matches_f = st.slider("最近几场比赛？", 1, 5, 5, key="f_slider")
 
-        def calc(scores):
-            if not scores: return 0
-            total_w = win_w = 0
-            for i, (g, c) in enumerate(scores):
-                base = 1.0 - (i * 0.15)
-                weight = goal_diff_weight(g, c)
-                is_win = 1 if g > c else 0
-                total_w += base
-                win_w += is_win * weight * base
-            return win_w / total_w if total_w > 0 else 0
-
-        home_wr = calc(home_scores)
-        away_wr = calc(away_scores)
-        if not home_scores: return away_wr
-        if not away_scores: return home_wr
-        return (home_wr * w_home) + (away_wr * w_away)
-
-    st.subheader(f"📊 {f_home_name} 比赛记录")
     col3, col4 = st.columns(2)
-    fh_home_scores = []
-    fh_away_scores = []
+    fh_scores = []
+    fa_scores = []
 
     with col3:
-        st.write("🏠 主场比赛")
-        num_fh_home = st.slider("几场？", 0, 5, 3, key="fh_home_slider")
-        for i in range(num_fh_home):
+        st.subheader(f"{f_home_name} 最近{num_matches_f}场")
+        for i in range(num_matches_f):
+            is_home = st.checkbox(f"第{i+1}场 主场？", key=f"fh_home_{i}")
             c1, c2 = st.columns(2)
             with c1:
-                g1 = st.number_input(f"第{i+1}场 进", min_value=0, value=0, key=f"fhh_g{i}")
+                g1 = st.number_input(f"进球", min_value=0, value=0, key=f"fh_g{i}")
             with c2:
-                g2 = st.number_input(f"第{i+1}场 失", min_value=0, value=0, key=f"fhh_c{i}")
-            fh_home_scores.append((g1, g2))
+                g2 = st.number_input(f"失球", min_value=0, value=0, key=f"fh_c{i}")
+            fh_scores.append((g1, g2, is_home))
 
     with col4:
-        st.write("✈️ 客场比赛")
-        num_fh_away = st.slider("几场？", 0, 5, 3, key="fh_away_slider")
-        for i in range(num_fh_away):
+        st.subheader(f"{f_away_name} 最近{num_matches_f}场")
+        for i in range(num_matches_f):
+            is_home = st.checkbox(f"第{i+1}场 主场？", key=f"fa_home_{i}")
             c1, c2 = st.columns(2)
             with c1:
-                g1 = st.number_input(f"第{i+1}场 进", min_value=0, value=0, key=f"fha_g{i}")
+                g1 = st.number_input(f"进球", min_value=0, value=0, key=f"fa_g{i}")
             with c2:
-                g2 = st.number_input(f"第{i+1}场 失", min_value=0, value=0, key=f"fha_c{i}")
-            fh_away_scores.append((g1, g2))
+                g2 = st.number_input(f"失球", min_value=0, value=0, key=f"fa_c{i}")
+            fa_scores.append((g1, g2, is_home))
 
-    st.divider()
-    st.subheader(f"📊 {f_away_name} 比赛记录")
-    col5, col6 = st.columns(2)
-    fa_home_scores = []
-    fa_away_scores = []
+    def f_winrate(scores, is_playing_home, venue):
+        if venue == "主队主场":
+            home_w, away_w = (0.7, 0.3) if is_playing_home else (0.3, 0.7)
+        elif venue == "客队主场":
+            home_w, away_w = (0.3, 0.7) if is_playing_home else (0.7, 0.3)
+        else:
+            home_w, away_w = 0.5, 0.5
 
-    with col5:
-        st.write("🏠 主场比赛")
-        num_fa_home = st.slider("几场？", 0, 5, 3, key="fa_home_slider")
-        for i in range(num_fa_home):
-            c1, c2 = st.columns(2)
-            with c1:
-                g1 = st.number_input(f"第{i+1}场 进", min_value=0, value=0, key=f"fah_g{i}")
-            with c2:
-                g2 = st.number_input(f"第{i+1}场 失", min_value=0, value=0, key=f"fah_c{i}")
-            fa_home_scores.append((g1, g2))
+        home_scores = [(g, c) for g, c, h in scores if h]
+        away_scores = [(g, c) for g, c, h in scores if not h]
 
-    with col6:
-        st.write("✈️ 客场比赛")
-        num_fa_away = st.slider("几场？", 0, 5, 3, key="fa_away_slider")
-        for i in range(num_fa_away):
-            c1, c2 = st.columns(2)
-            with c1:
-                g1 = st.number_input(f"第{i+1}场 进", min_value=0, value=0, key=f"faa_g{i}")
-            with c2:
-                g2 = st.number_input(f"第{i+1}场 失", min_value=0, value=0, key=f"faa_c{i}")
-            fa_away_scores.append((g1, g2))
+        def calc(sc):
+            if not sc: return 0
+            total_w = win_w = 0
+            for i, (g, c) in enumerate(sc):
+                base = 1.0 - (i * 0.15)
+                w = goal_diff_weight(g, c)
+                total_w += base
+                win_w += (1 if g > c else 0) * w * base
+            return win_w / total_w if total_w > 0 else 0
+
+        h_wr = calc(home_scores)
+        a_wr = calc(away_scores)
+        if not home_scores: return a_wr
+        if not away_scores: return h_wr
+        return h_wr * home_w + a_wr * away_w
 
     if st.button("计算", key="f_calc", type="primary"):
-        h_wr = f_winrate_combined(fh_home_scores, fh_away_scores, True, venue)
-        a_wr = f_winrate_combined(fa_home_scores, fa_away_scores, False, venue)
+        h_wr = f_winrate(fh_scores, True, venue)
+        a_wr = f_winrate(fa_scores, False, venue)
         h_ev = (h_wr*(f_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr*(f_away_odds-1)*100) - ((1-a_wr)*100)
 
@@ -239,8 +252,8 @@ with tab2:
         }
 
         st.divider()
-        col7, col8 = st.columns(2)
-        with col7:
+        col5, col6 = st.columns(2)
+        with col5:
             st.subheader(f_home_name)
             st.metric("加权胜率", f"{h_wr:.1%}")
             st.metric("隐含概率", f"{1/f_home_odds:.1%}")
@@ -250,7 +263,7 @@ with tab2:
                 st.success("✅ 正期望值")
             else:
                 st.error("❌ 负期望值")
-        with col8:
+        with col6:
             st.subheader(f_away_name)
             st.metric("加权胜率", f"{a_wr:.1%}")
             st.metric("隐含概率", f"{1/f_away_odds:.1%}")
@@ -265,18 +278,18 @@ with tab2:
         r = st.session_state["f_result"]
         st.divider()
         st.subheader("💾 保存记录")
-        col9, col10, col11 = st.columns(3)
-        with col9:
+        col7, col8, col9 = st.columns(3)
+        with col7:
             f_stake = st.number_input("注额 (RM)", min_value=0, value=100, key="f_stake")
-        with col10:
+        with col8:
             f_bet = st.selectbox("押注队伍", [r["h_name"], r["a_name"]], key="f_bet")
-        with col11:
+        with col9:
             f_res = st.selectbox("实际结果", ["待定", "赢", "输", "平"], key="f_res")
 
         if st.button("保存记录", key="f_save"):
             odds_used = r["h_odds"] if f_bet == r["h_name"] else r["a_odds"]
             pnl = (odds_used-1)*f_stake if f_res == "赢" else (-f_stake if f_res == "输" else 0)
-            st.session_state["records"].append({
+            record = {
                 "日期": str(date.today()),
                 "运动": "足球",
                 "主队": r["h_name"],
@@ -289,8 +302,9 @@ with tab2:
                 "押注队伍": f_bet,
                 "实际结果": f_res,
                 "盈亏(RM)": pnl
-            })
-            st.success("✅ 记录已保存！去📋记录查看")
+            }
+            save_to_sheet(record)
+            st.success("✅ 记录已保存到 Google Sheets！")
 
 # ==================== 篮球 ====================
 with tab3:
@@ -307,7 +321,7 @@ with tab3:
     st.divider()
     num_matches_b = st.slider("最近几场比赛？", 1, 5, 5, key="b_slider")
 
-    score_weights_basketball = {
+    score_weights_b = {
         "大胜 (+15以上)": 1.0,
         "小胜 (+1到+14)": 0.7,
         "小负 (-1到-14)": 0.4,
@@ -321,13 +335,13 @@ with tab3:
     with col3:
         st.subheader(f"{b_home_name} 最近{num_matches_b}场")
         for i in range(num_matches_b):
-            v = st.selectbox(f"第{i+1}场", list(score_weights_basketball.keys()), key=f"bh{i}")
+            v = st.selectbox(f"第{i+1}场", list(score_weights_b.keys()), key=f"bh{i}")
             b_home_vars.append(v)
 
     with col4:
         st.subheader(f"{b_away_name} 最近{num_matches_b}场")
         for i in range(num_matches_b):
-            v = st.selectbox(f"第{i+1}场", list(score_weights_basketball.keys()), key=f"ba{i}")
+            v = st.selectbox(f"第{i+1}场", list(score_weights_b.keys()), key=f"ba{i}")
             b_away_vars.append(v)
 
     def b_winrate(vars, weights):
@@ -339,8 +353,8 @@ with tab3:
         return win_w / total_w
 
     if st.button("计算", key="b_calc", type="primary"):
-        h_wr = b_winrate(b_home_vars, score_weights_basketball)
-        a_wr = b_winrate(b_away_vars, score_weights_basketball)
+        h_wr = b_winrate(b_home_vars, score_weights_b)
+        a_wr = b_winrate(b_away_vars, score_weights_b)
         h_ev = (h_wr*(b_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr*(b_away_odds-1)*100) - ((1-a_wr)*100)
 
@@ -389,7 +403,7 @@ with tab3:
         if st.button("保存记录", key="b_save"):
             odds_used = r["h_odds"] if b_bet == r["h_name"] else r["a_odds"]
             pnl = (odds_used-1)*b_stake if b_res == "赢" else (-b_stake if b_res == "输" else 0)
-            st.session_state["records"].append({
+            record = {
                 "日期": str(date.today()),
                 "运动": "篮球",
                 "主队": r["h_name"],
@@ -402,25 +416,28 @@ with tab3:
                 "押注队伍": b_bet,
                 "实际结果": b_res,
                 "盈亏(RM)": pnl
-            })
-            st.success("✅ 记录已保存！去📋记录查看")
+            }
+            save_to_sheet(record)
+            st.success("✅ 记录已保存到 Google Sheets！")
 
 # ==================== 记录 ====================
 with tab4:
     st.header("📋 历史记录")
 
-    if len(st.session_state["records"]) == 0:
+    if st.button("🔄 刷新记录", key="refresh"):
+        st.rerun()
+
+    df = load_from_sheet()
+
+    if df.empty:
         st.info("还没有记录，去分析一场比赛然后保存吧！")
     else:
-        df = pd.DataFrame(st.session_state["records"])
-
-        # 统计（只算已知结果）
         known = df[df["实际结果"] != "待定"]
         total = len(df)
         wins = len(known[known["实际结果"] == "赢"])
         losses = len(known[known["实际结果"] == "输"])
         pending = len(df[df["实际结果"] == "待定"])
-        total_pnl = known["盈亏(RM)"].sum()
+        total_pnl = pd.to_numeric(known["盈亏(RM)"], errors="coerce").sum()
 
         col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
@@ -437,30 +454,24 @@ with tab4:
         st.divider()
         st.dataframe(df, use_container_width=True)
 
-        # 编辑待定记录
+        # 更新待定记录
         pending_df = df[df["实际结果"] == "待定"]
         if len(pending_df) > 0:
             st.divider()
             st.subheader("✏️ 更新待定记录")
-            pending_options = [f"{row['日期']} | {row['主队']} vs {row['客队']}" for _, row in pending_df.iterrows()]
-            selected = st.selectbox("选择要更新的比赛", pending_options)
+            options = [f"{row['日期']} | {row['主队']} vs {row['客队']}" for _, row in pending_df.iterrows()]
+            selected = st.selectbox("选择比赛", options, key="edit_select")
             new_result = st.selectbox("实际结果", ["赢", "输", "平"], key="edit_result")
 
             if st.button("更新结果", key="edit_save"):
-                idx = pending_options.index(selected)
+                idx = options.index(selected)
                 actual_idx = pending_df.index[idx]
-                record = st.session_state["records"][actual_idx]
-                record["实际结果"] = new_result
-                if new_result == "赢":
-                    odds = record["注额(RM)"]
-                    record["盈亏(RM)"] = (float(record["主队期望值"]) if record["押注队伍"] == record["主队"] else float(record["客队期望值"]))
-                elif new_result == "输":
-                    record["盈亏(RM)"] = -record["注额(RM)"]
-                else:
-                    record["盈亏(RM)"] = 0
-                st.success("✅ 记录已更新！")
-                st.rerun()
+                row = df.iloc[actual_idx]
+                odds = float(str(row["主队期望值"]).replace("%","")) if row["押注队伍"] == row["主队"] else float(str(row["客队期望值"]).replace("%",""))
+                stake = float(row["注额(RM)"])
+                pnl = (float(row["主队赔率"]) - 1) * stake if new_result == "赢" else (-stake if new_result == "输" else 0)
+                update_sheet_row(actual_idx, new_result, pnl)
+                st.success("✅ 已更新！按刷新查看")
 
-        st.divider()
         csv = df.to_csv(index=False).encode("utf-8")
         st.download_button("📥 下载记录", csv, "records.csv", "text/csv")
