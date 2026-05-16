@@ -10,7 +10,9 @@ SCOPES = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/a
 HEADERS = ["日期","运动","主队","客队","主队加权胜率","客队加权胜率","主队期望值","客队期望值","注额(RM)","押注队伍","实际结果","盈亏(RM)"]
 
 def get_sheet():
-    creds = Credentials.from_service_account_file("credentials.json", scopes=SCOPES)
+    import json
+    credentials_info = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+    creds = Credentials.from_service_account_info(credentials_info, scopes=SCOPES)
     client = gspread.authorize(creds)
     return client.open_by_key(SHEET_ID).sheet1
 
