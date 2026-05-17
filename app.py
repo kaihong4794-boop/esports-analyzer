@@ -50,6 +50,13 @@ tab1, tab2, tab3, tab4 = st.tabs(["⚔️ 电竞", "⚽ 足球", "🏀 篮球", 
 with tab1:
     st.header("电竞期望值分析器")
 
+    score_weights_esports = {
+        "2-0 赢": 1.0,
+        "2-1 赢": 0.7,
+        "1-2 输": 0.4,
+        "0-2 输": 0.2
+    }
+
     col1, col2 = st.columns(2)
     with col1:
         e_home_name = st.text_input("主队名字", "主队", key="e_home_name")
@@ -59,15 +66,6 @@ with tab1:
         e_away_odds = st.number_input("客队赔率", min_value=1.01, value=2.0, step=0.01, key="e_away_odds")
 
     st.divider()
-    bo_format = st.radio("比赛格式", ["BO3", "BO5"], horizontal=True, key="bo_format")
-
-    if bo_format == "BO3":
-        score_options = ["2-0 赢", "2-1 赢", "1-2 输", "0-2 输"]
-        score_weights = {"2-0 赢": 1.0, "2-1 赢": 0.7, "1-2 输": 0.4, "0-2 输": 0.2}
-    else:
-        score_options = ["3-0 赢", "3-1 赢", "3-2 赢", "2-3 输", "1-3 输", "0-3 输"]
-        score_weights = {"3-0 赢": 1.0, "3-1 赢": 0.8, "3-2 赢": 0.6, "2-3 输": 0.4, "1-3 输": 0.25, "0-3 输": 0.1}
-
     num_matches_e = st.slider("最近几场比赛？", 1, 5, 5, key="e_slider")
 
     col3, col4 = st.columns(2)
@@ -77,13 +75,13 @@ with tab1:
     with col3:
         st.subheader(f"{e_home_name} 最近{num_matches_e}场")
         for i in range(num_matches_e):
-            v = st.selectbox(f"第{i+1}场", score_options, key=f"eh{i}")
+            v = st.selectbox(f"第{i+1}场", list(score_weights_esports.keys()), key=f"eh{i}")
             e_home_vars.append(v)
 
     with col4:
         st.subheader(f"{e_away_name} 最近{num_matches_e}场")
         for i in range(num_matches_e):
-            v = st.selectbox(f"第{i+1}场", score_options, key=f"ea{i}")
+            v = st.selectbox(f"第{i+1}场", list(score_weights_esports.keys()), key=f"ea{i}")
             e_away_vars.append(v)
 
     if st.button("计算", key="e_calc", type="primary"):
@@ -95,8 +93,8 @@ with tab1:
                 win_w += (1 if "赢" in v else 0) * weights[v] * base
             return win_w / total_w
 
-        h_wr = e_winrate(e_home_vars, score_weights)
-        a_wr = e_winrate(e_away_vars, score_weights)
+        h_wr = e_winrate(e_home_vars, score_weights_esports)
+        a_wr = e_winrate(e_away_vars, score_weights_esports)
         h_ev = (h_wr*(e_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr*(e_away_odds-1)*100) - ((1-a_wr)*100)
 
@@ -166,6 +164,20 @@ with tab1:
 with tab2:
     st.header("足球期望值分析器")
 
+    # 足球比赛结果选项和权重
+    football_results = {
+        "🏠 主场大胜": {"weight": 1.0, "is_win": 1, "is_home": True},
+        "🏠 主场小胜": {"weight": 0.75, "is_win": 1, "is_home": True},
+        "🏠 主场平局": {"weight": 0.5, "is_win": 0, "is_home": True},
+        "🏠 主场小负": {"weight": 0.25, "is_win": 0, "is_home": True},
+        "🏠 主场大负": {"weight": 0.05, "is_win": 0, "is_home": True},
+        "✈️ 客场大胜": {"weight": 1.0, "is_win": 1, "is_home": False},
+        "✈️ 客场小胜": {"weight": 0.75, "is_win": 1, "is_home": False},
+        "✈️ 客场平局": {"weight": 0.5, "is_win": 0, "is_home": False},
+        "✈️ 客场小负": {"weight": 0.25, "is_win": 0, "is_home": False},
+        "✈️ 客场大负": {"weight": 0.05, "is_win": 0, "is_home": False},
+    }
+
     col1, col2 = st.columns(2)
     with col1:
         f_home_name = st.text_input("主队名字", "主队", key="f_home_name")
@@ -176,73 +188,48 @@ with tab2:
 
     st.divider()
     venue = st.radio("这场比赛场地", ["主队主场", "客队主场", "中立场"], horizontal=True, key="f_venue")
-
-    def goal_diff_weight(scored, conceded):
-        diff = scored - conceded
-        if diff >= 3: return 1.0
-        elif diff >= 1: return 0.7
-        elif diff == 0: return 0.3
-        elif diff >= -2: return 0.15
-        else: return 0.05
-
     num_matches_f = st.slider("最近几场比赛？", 1, 5, 5, key="f_slider")
 
+    def calc_football_winrate(matches, is_playing_home, venue):
+        # 主客场调整系数
+        if venue == "主队主场":
+            home_boost = 1.2 if is_playing_home else 0.8
+        elif venue == "客队主场":
+            home_boost = 0.8 if is_playing_home else 1.2
+        else:
+            home_boost = 1.0
+
+        total_w = win_w = 0
+        for i, result in enumerate(matches):
+            info = football_results[result]
+            base = 1.0 - (i * 0.1)
+            # 主场比赛加成
+            venue_multiplier = 1.2 if info["is_home"] else 0.8
+            # 今天比赛场地加成
+            final_weight = base * info["weight"] * venue_multiplier * home_boost
+            total_w += base
+            win_w += info["is_win"] * final_weight
+        return win_w / total_w if total_w > 0 else 0
+
     col3, col4 = st.columns(2)
-    fh_scores = []
-    fa_scores = []
+    f_home_vars = []
+    f_away_vars = []
 
     with col3:
         st.subheader(f"{f_home_name} 最近{num_matches_f}场")
         for i in range(num_matches_f):
-            is_home = st.checkbox(f"第{i+1}场 主场？", key=f"fh_home_{i}")
-            c1, c2 = st.columns(2)
-            with c1:
-                g1 = st.number_input(f"进球", min_value=0, value=0, key=f"fh_g{i}")
-            with c2:
-                g2 = st.number_input(f"失球", min_value=0, value=0, key=f"fh_c{i}")
-            fh_scores.append((g1, g2, is_home))
+            v = st.selectbox(f"第{i+1}场", list(football_results.keys()), key=f"fh{i}")
+            f_home_vars.append(v)
 
     with col4:
         st.subheader(f"{f_away_name} 最近{num_matches_f}场")
         for i in range(num_matches_f):
-            is_home = st.checkbox(f"第{i+1}场 主场？", key=f"fa_home_{i}")
-            c1, c2 = st.columns(2)
-            with c1:
-                g1 = st.number_input(f"进球", min_value=0, value=0, key=f"fa_g{i}")
-            with c2:
-                g2 = st.number_input(f"失球", min_value=0, value=0, key=f"fa_c{i}")
-            fa_scores.append((g1, g2, is_home))
-
-    def f_winrate(scores, is_playing_home, venue):
-        if venue == "主队主场":
-            home_w, away_w = (0.7, 0.3) if is_playing_home else (0.3, 0.7)
-        elif venue == "客队主场":
-            home_w, away_w = (0.3, 0.7) if is_playing_home else (0.7, 0.3)
-        else:
-            home_w, away_w = 0.5, 0.5
-
-        home_scores = [(g, c) for g, c, h in scores if h]
-        away_scores = [(g, c) for g, c, h in scores if not h]
-
-        def calc(sc):
-            if not sc: return 0
-            total_w = win_w = 0
-            for i, (g, c) in enumerate(sc):
-                base = 1.0 - (i * 0.15)
-                w = goal_diff_weight(g, c)
-                total_w += base
-                win_w += (1 if g > c else 0) * w * base
-            return win_w / total_w if total_w > 0 else 0
-
-        h_wr = calc(home_scores)
-        a_wr = calc(away_scores)
-        if not home_scores: return a_wr
-        if not away_scores: return h_wr
-        return h_wr * home_w + a_wr * away_w
+            v = st.selectbox(f"第{i+1}场", list(football_results.keys()), key=f"fa{i}")
+            f_away_vars.append(v)
 
     if st.button("计算", key="f_calc", type="primary"):
-        h_wr = f_winrate(fh_scores, True, venue)
-        a_wr = f_winrate(fa_scores, False, venue)
+        h_wr = calc_football_winrate(f_home_vars, True, venue)
+        a_wr = calc_football_winrate(f_away_vars, False, venue)
         h_ev = (h_wr*(f_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr*(f_away_odds-1)*100) - ((1-a_wr)*100)
 
@@ -404,7 +391,7 @@ with tab3:
 
         if st.button("保存记录", key="b_save"):
             odds_used = r["h_odds"] if b_bet == r["h_name"] else r["a_odds"]
-            pnl = (odds_used-1)*b_stake if b_res == "赢" else (-b_stake if b_res == "输" else 0)
+            pnl = (odds_used-1)*b_stake if b_res == "赢" else -b_stake
             record = {
                 "日期": str(date.today()),
                 "运动": "篮球",
@@ -456,7 +443,6 @@ with tab4:
         st.divider()
         st.dataframe(df, use_container_width=True)
 
-        # 更新待定记录
         pending_df = df[df["实际结果"] == "待定"]
         if len(pending_df) > 0:
             st.divider()
@@ -469,9 +455,9 @@ with tab4:
                 idx = options.index(selected)
                 actual_idx = pending_df.index[idx]
                 row = df.iloc[actual_idx]
-                odds = float(str(row["主队期望值"]).replace("%","")) if row["押注队伍"] == row["主队"] else float(str(row["客队期望值"]).replace("%",""))
                 stake = float(row["注额(RM)"])
-                pnl = (float(row["主队赔率"]) - 1) * stake if new_result == "赢" else (-stake if new_result == "输" else 0)
+                odds_used = float(str(row["主队期望值"])) if row["押注队伍"] == row["主队"] else float(str(row["客队期望值"]))
+                pnl = (odds_used - 1) * stake if new_result == "赢" else (-stake if new_result == "输" else 0)
                 update_sheet_row(actual_idx, new_result, pnl)
                 st.success("✅ 已更新！按刷新查看")
 
