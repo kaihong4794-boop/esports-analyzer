@@ -6,8 +6,7 @@ from datetime import date
 
 SHEET_ID = "1LWzu7jwRan5-WSGhWUxnmwCLJ0iyxhVH07bLojGD-3s"
 SCOPES = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-HEADERS = ["日期","运动","主队","客队","主队加权胜率","客队加权胜率","主队期望值","平局期望值","客队期望值","注额(RM)","押注选项","实际结果","盈亏(RM)"]
-
+HEADERS = ["日期","运动","主队","客队","主队加权胜率","平局加权胜率","客队加权胜率","主队期望值","平局期望值","客队期望值","注额(RM)","押注选项","实际结果","盈亏(RM)"]
 def get_sheet():
     import json
     credentials_info = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
@@ -277,7 +276,7 @@ with tab2:
             record = {
                 "日期": str(date.today()), "运动": "足球",
                 "主队": r["h_name"], "客队": r["a_name"],
-                "主队加权胜率": f"{r['h_wr']:.1%}", "客队加权胜率": f"{r['a_wr']:.1%}",
+                "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": f"{r['draw_prob']:.1%}", "客队加权胜率": f"{r['a_wr']:.1%}",
                 "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": f"{r['d_ev']:.2f}",
                 "客队期望值": f"{r['a_ev']:.2f}", "注额(RM)": f_stake,
                 "押注选项": f_bet, "实际结果": f_res, "盈亏(RM)": pnl
