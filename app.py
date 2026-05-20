@@ -3,10 +3,12 @@ from google.oauth2.service_account import Credentials
 import streamlit as st
 import pandas as pd
 from datetime import date
+import re
 
 SHEET_ID = "1LWzu7jwRan5-WSGhWUxnmwCLJ0iyxhVH07bLojGD-3s"
 SCOPES = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 HEADERS = ["日期","运动","主队","客队","主队加权胜率","平局加权胜率","客队加权胜率","主队期望值","平局期望值","客队期望值","注额(RM)","押注选项","实际结果","盈亏(RM)"]
+
 def get_sheet():
     import json
     credentials_info = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
@@ -39,37 +41,190 @@ def update_sheet_row(row_idx, result, pnl):
     except Exception as e:
         st.error(f"更新失败: {e}")
 
+# ─── Flashscore Parser ───────────────────────────────────────────────────────
+
+def parse_flashscore(raw_text):
+    """
+    Parse Flashscore copy-paste text.
+    Returns dict: { team_name: [list of up to 5 match dicts] }
+    Each match dict: { date, home_team, away_team, home_score, away_score, wld }
+    """
+    lines = [l.strip() for l in raw_text.split('\n') if l.strip()]
+    teams_data = {}
+    current_team = None
+    pending_match = None
+
+    for line in lines:
+        # Detect "Last matches: TeamName"
+        lm = re.match(r'Last matches[:\s]+(.+)', line, re.IGNORECASE)
+        if lm:
+            current_team = lm.group(1).strip()
+            if current_team not in teams_data:
+                teams_data[current_team] = []
+            pending_match = None
+            continue
+
+        if current_team is None:
+            continue
+
+        # Match entry line: [date+league+teams+score](url)
+        entry = re.match(r'\[(\d{2}\.\d{2}\.\d{2})[A-Z0-9]*(.+?)(\d+)(\d+)\]\(', line)
+        if entry:
+            raw_inner = entry.group(0)
+            # Extract score - last two digits before ](
+            score_m = re.search(r'(\d+)(\d+)\]\($', raw_inner.rstrip())
+            if not score_m:
+                score_m = re.search(r'(\d+)(\d+)\]\(', raw_inner)
+            if score_m:
+                s1 = int(score_m.group(1))
+                s2 = int(score_m.group(2))
+                # Everything between date+league and score
+                date_str = entry.group(1)
+                inner_content = entry.group(2)
+                # Try to detect home/away by finding current_team name in inner_content
+                team_lower = current_team.lower()
+                content_lower = inner_content.lower()
+                pos = content_lower.find(team_lower[:4])  # match first 4 chars
+                is_home = pos == 0 or (pos < len(content_lower) // 2)
+                pending_match = {
+                    'date': date_str,
+                    'raw': inner_content,
+                    'home_score': s1,
+                    'away_score': s2,
+                    'is_home': is_home
+                }
+            continue
+
+        # W/L/D result line
+        wld_m = re.match(r'\[([WLD])\]\(', line)
+        if wld_m and pending_match and current_team:
+            if len(teams_data[current_team]) < 5:
+                pending_match['wld'] = wld_m.group(1)
+                teams_data[current_team].append(pending_match)
+            pending_match = None
+            continue
+
+    return teams_data
+
+def flashscore_to_football_result(match, is_this_team_home):
+    """Convert parsed match to football result dropdown label."""
+    wld = match['wld']
+    h = match['home_score']
+    a = match['away_score']
+    team_score = h if match['is_home'] else a
+    opp_score = a if match['is_home'] else h
+    diff = abs(team_score - opp_score)
+    was_home = match['is_home']
+
+    prefix = "🏠 主场" if was_home else "✈️ 客场"
+
+    if wld == 'W':
+        return f"{prefix}大胜" if diff >= 2 else f"{prefix}小胜"
+    elif wld == 'D':
+        return f"{prefix}平局"
+    else:
+        return f"{prefix}大负" if diff >= 2 else f"{prefix}小负"
+
+def flashscore_to_esports_result(match):
+    """Convert parsed match to esports result dropdown label."""
+    wld = match['wld']
+    h = match['home_score']
+    a = match['away_score']
+    team_score = h if match['is_home'] else a
+    opp_score = a if match['is_home'] else h
+
+    if wld == 'W':
+        return "2-0 赢" if team_score == 2 and opp_score == 0 else "2-1 赢"
+    elif wld == 'L':
+        return "0-2 输" if team_score == 0 else "1-2 输"
+    else:
+        return "2-1 赢"  # fallback
+
+# ─── App ─────────────────────────────────────────────────────────────────────
+
 st.title("运动期望值分析器 🏆")
 
 tab1, tab2, tab3, tab4 = st.tabs(["⚔️ 电竞", "⚽ 足球", "🏀 篮球", "📋 记录"])
 
+# ── TAB 1: 电竞 ──────────────────────────────────────────────────────────────
 with tab1:
     st.header("电竞期望值分析器")
     score_weights_esports = {
         "2-0 赢": 1.0, "2-1 赢": 0.7, "1-2 输": 0.4, "0-2 输": 0.2
     }
+
+    # Flashscore paste section
+    with st.expander("📋 从 Flashscore 自动填入（可选）"):
+        fs_text_e = st.text_area(
+            "粘贴 Flashscore 复制内容（包含两队历史）",
+            height=150,
+            key="fs_esports",
+            placeholder="Last matches: Team A\n[17.05.26...]\n[W](...)\n...\nLast matches: Team B\n..."
+        )
+        if st.button("🔍 自动识别", key="fs_e_parse"):
+            if fs_text_e:
+                parsed = parse_flashscore(fs_text_e)
+                if parsed:
+                    teams = list(parsed.keys())
+                    st.session_state['fs_e_teams'] = teams
+                    st.session_state['fs_e_data'] = parsed
+                    st.success(f"✅ 识别到: {', '.join(teams)}")
+                else:
+                    st.error("无法识别，请检查格式")
+            else:
+                st.warning("请先粘贴内容")
+
+        if 'fs_e_data' in st.session_state and st.session_state['fs_e_data']:
+            teams = st.session_state['fs_e_teams']
+            col_a, col_b = st.columns(2)
+            with col_a:
+                home_pick = st.selectbox("设为主队", teams, key="fs_e_home_pick")
+            with col_b:
+                away_options = [t for t in teams if t != home_pick]
+                away_pick = st.selectbox("设为客队", away_options if away_options else teams, key="fs_e_away_pick")
+            if st.button("✅ 套用到分析器", key="fs_e_apply"):
+                st.session_state['e_auto_home_name'] = home_pick
+                st.session_state['e_auto_away_name'] = away_pick
+                home_matches = st.session_state['fs_e_data'].get(home_pick, [])
+                away_matches = st.session_state['fs_e_data'].get(away_pick, [])
+                st.session_state['e_auto_home_results'] = [flashscore_to_esports_result(m) for m in home_matches]
+                st.session_state['e_auto_away_results'] = [flashscore_to_esports_result(m) for m in away_matches]
+                st.success("✅ 已套用！请看下方分析器")
+                st.rerun()
+
     col1, col2 = st.columns(2)
     with col1:
-        e_home_name = st.text_input("主队名字", "主队", key="e_home_name")
+        default_e_home = st.session_state.get('e_auto_home_name', '主队')
+        e_home_name = st.text_input("主队名字", default_e_home, key="e_home_name")
         e_home_odds = st.number_input("主队赔率", min_value=1.01, value=1.5, step=0.01, key="e_home_odds")
     with col2:
-        e_away_name = st.text_input("客队名字", "客队", key="e_away_name")
+        default_e_away = st.session_state.get('e_auto_away_name', '客队')
+        e_away_name = st.text_input("客队名字", default_e_away, key="e_away_name")
         e_away_odds = st.number_input("客队赔率", min_value=1.01, value=2.0, step=0.01, key="e_away_odds")
+
     st.divider()
     num_matches_e = st.slider("最近几场比赛？", 1, 5, 5, key="e_slider")
     col3, col4 = st.columns(2)
     e_home_vars = []
     e_away_vars = []
+    auto_home_e = st.session_state.get('e_auto_home_results', [])
+    auto_away_e = st.session_state.get('e_auto_away_results', [])
+
     with col3:
         st.subheader(f"{e_home_name} 最近{num_matches_e}场")
         for i in range(num_matches_e):
-            v = st.selectbox(f"第{i+1}场", list(score_weights_esports.keys()), key=f"eh{i}")
+            default_val = auto_home_e[i] if i < len(auto_home_e) else list(score_weights_esports.keys())[0]
+            idx = list(score_weights_esports.keys()).index(default_val) if default_val in score_weights_esports else 0
+            v = st.selectbox(f"第{i+1}场", list(score_weights_esports.keys()), index=idx, key=f"eh{i}")
             e_home_vars.append(v)
     with col4:
         st.subheader(f"{e_away_name} 最近{num_matches_e}场")
         for i in range(num_matches_e):
-            v = st.selectbox(f"第{i+1}场", list(score_weights_esports.keys()), key=f"ea{i}")
+            default_val = auto_away_e[i] if i < len(auto_away_e) else list(score_weights_esports.keys())[0]
+            idx = list(score_weights_esports.keys()).index(default_val) if default_val in score_weights_esports else 0
+            v = st.selectbox(f"第{i+1}场", list(score_weights_esports.keys()), index=idx, key=f"ea{i}")
             e_away_vars.append(v)
+
     if st.button("计算", key="e_calc", type="primary"):
         def e_winrate(vars, weights):
             total_w = win_w = 0
@@ -109,6 +264,7 @@ with tab1:
                 st.success("✅ 正期望值")
             else:
                 st.error("❌ 负期望值")
+
     if "e_result" in st.session_state:
         r = st.session_state["e_result"]
         st.divider()
@@ -134,6 +290,7 @@ with tab1:
             save_to_sheet(record)
             st.success("✅ 记录已保存到 Google Sheets！")
 
+# ── TAB 2: 足球 ──────────────────────────────────────────────────────────────
 with tab2:
     st.header("足球期望值分析器")
     football_results = {
@@ -148,13 +305,62 @@ with tab2:
         "✈️ 客场小负": {"weight": 0.25, "is_win": 0, "is_draw": 0, "is_home": False},
         "✈️ 客场大负": {"weight": 0.05, "is_win": 0, "is_draw": 0, "is_home": False},
     }
+
+    # Flashscore paste section
+    with st.expander("📋 从 Flashscore 自动填入（可选）"):
+        fs_text_f = st.text_area(
+            "粘贴 Flashscore 复制内容（包含两队历史）",
+            height=150,
+            key="fs_football",
+            placeholder="Last matches: Brighton\n[17.05.26PLLeedsBrighton10](...)\n[L](...)\n...\nLast matches: Manchester Utd\n..."
+        )
+        if st.button("🔍 自动识别", key="fs_f_parse"):
+            if fs_text_f:
+                parsed = parse_flashscore(fs_text_f)
+                if parsed:
+                    teams = list(parsed.keys())
+                    st.session_state['fs_f_teams'] = teams
+                    st.session_state['fs_f_data'] = parsed
+                    st.success(f"✅ 识别到: {', '.join(teams)}")
+                else:
+                    st.error("无法识别，请检查格式")
+            else:
+                st.warning("请先粘贴内容")
+
+        if 'fs_f_data' in st.session_state and st.session_state['fs_f_data']:
+            teams = st.session_state['fs_f_teams']
+            col_a, col_b = st.columns(2)
+            with col_a:
+                home_pick = st.selectbox("设为主队", teams, key="fs_f_home_pick")
+            with col_b:
+                away_options = [t for t in teams if t != home_pick]
+                away_pick = st.selectbox("设为客队", away_options if away_options else teams, key="fs_f_away_pick")
+            if st.button("✅ 套用到分析器", key="fs_f_apply"):
+                st.session_state['f_auto_home_name'] = home_pick
+                st.session_state['f_auto_away_name'] = away_pick
+                home_matches = st.session_state['fs_f_data'].get(home_pick, [])
+                away_matches = st.session_state['fs_f_data'].get(away_pick, [])
+                home_results = [flashscore_to_football_result(m, True) for m in home_matches]
+                away_results = [flashscore_to_football_result(m, False) for m in away_matches]
+                # Validate against football_results keys
+                valid_keys = list(football_results.keys())
+                home_results = [r if r in valid_keys else valid_keys[0] for r in home_results]
+                away_results = [r if r in valid_keys else valid_keys[0] for r in away_results]
+                st.session_state['f_auto_home_results'] = home_results
+                st.session_state['f_auto_away_results'] = away_results
+                st.success("✅ 已套用！请看下方分析器")
+                st.rerun()
+
     col1, col2, col3 = st.columns(3)
     with col1:
-        f_home_name = st.text_input("主队名字", "主队", key="f_home_name")
+        default_f_home = st.session_state.get('f_auto_home_name', '主队')
+        f_home_name = st.text_input("主队名字", default_f_home, key="f_home_name")
     with col2:
         st.write("")
     with col3:
-        f_away_name = st.text_input("客队名字", "客队", key="f_away_name")
+        default_f_away = st.session_state.get('f_auto_away_name', '客队')
+        f_away_name = st.text_input("客队名字", default_f_away, key="f_away_name")
+
     col4, col5, col6 = st.columns(3)
     with col4:
         f_home_odds = st.number_input("主队赔率", min_value=1.01, value=2.0, step=0.01, key="f_home_odds")
@@ -162,6 +368,7 @@ with tab2:
         f_draw_odds = st.number_input("平局赔率", min_value=1.01, value=3.0, step=0.01, key="f_draw_odds")
     with col6:
         f_away_odds = st.number_input("客队赔率", min_value=1.01, value=3.5, step=0.01, key="f_away_odds")
+
     st.divider()
     venue = st.radio("这场比赛场地", ["主队主场", "客队主场", "中立场"], horizontal=True, key="f_venue")
     num_matches_f = st.slider("最近几场比赛？", 1, 5, 5, key="f_slider")
@@ -189,15 +396,23 @@ with tab2:
     col7, col8 = st.columns(2)
     f_home_vars = []
     f_away_vars = []
+    auto_home_f = st.session_state.get('f_auto_home_results', [])
+    auto_away_f = st.session_state.get('f_auto_away_results', [])
+    valid_keys = list(football_results.keys())
+
     with col7:
         st.subheader(f"{f_home_name} 最近{num_matches_f}场")
         for i in range(num_matches_f):
-            v = st.selectbox(f"第{i+1}场", list(football_results.keys()), key=f"fh{i}")
+            default_val = auto_home_f[i] if i < len(auto_home_f) else valid_keys[0]
+            idx = valid_keys.index(default_val) if default_val in valid_keys else 0
+            v = st.selectbox(f"第{i+1}场", valid_keys, index=idx, key=f"fh{i}")
             f_home_vars.append(v)
     with col8:
         st.subheader(f"{f_away_name} 最近{num_matches_f}场")
         for i in range(num_matches_f):
-            v = st.selectbox(f"第{i+1}场", list(football_results.keys()), key=f"fa{i}")
+            default_val = auto_away_f[i] if i < len(auto_away_f) else valid_keys[0]
+            idx = valid_keys.index(default_val) if default_val in valid_keys else 0
+            v = st.selectbox(f"第{i+1}场", valid_keys, index=idx, key=f"fa{i}")
             f_away_vars.append(v)
 
     if st.button("计算", key="f_calc", type="primary"):
@@ -284,6 +499,7 @@ with tab2:
             save_to_sheet(record)
             st.success("✅ 记录已保存到 Google Sheets！")
 
+# ── TAB 3: 篮球 ──────────────────────────────────────────────────────────────
 with tab3:
     st.header("篮球期望值分析器")
     col1, col2 = st.columns(2)
@@ -378,6 +594,7 @@ with tab3:
             save_to_sheet(record)
             st.success("✅ 记录已保存到 Google Sheets！")
 
+# ── TAB 4: 记录 ──────────────────────────────────────────────────────────────
 with tab4:
     st.header("📋 历史记录")
     if st.button("🔄 刷新记录", key="refresh"):
