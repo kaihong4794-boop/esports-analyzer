@@ -44,18 +44,12 @@ def update_sheet_row(row_idx, result, pnl):
 # ─── Flashscore Parser ───────────────────────────────────────────────────────
 
 def parse_flashscore(raw_text):
-    """
-    Parse Flashscore copy-paste text.
-    Returns dict: { team_name: [list of up to 5 match dicts] }
-    Each match dict: { date, home_team, away_team, home_score, away_score, wld }
-    """
     lines = [l.strip() for l in raw_text.split('\n') if l.strip()]
     teams_data = {}
     current_team = None
     pending_match = None
 
     for line in lines:
-        # Detect "Last matches: TeamName"
         lm = re.match(r'Last matches[:\s]+(.+)', line, re.IGNORECASE)
         if lm:
             current_team = lm.group(1).strip()
@@ -67,24 +61,20 @@ def parse_flashscore(raw_text):
         if current_team is None:
             continue
 
-        # Match entry line: [date+league+teams+score](url)
         entry = re.match(r'\[(\d{2}\.\d{2}\.\d{2})[A-Z0-9]*(.+?)(\d+)(\d+)\]\(', line)
         if entry:
             raw_inner = entry.group(0)
-            # Extract score - last two digits before ](
             score_m = re.search(r'(\d+)(\d+)\]\($', raw_inner.rstrip())
             if not score_m:
                 score_m = re.search(r'(\d+)(\d+)\]\(', raw_inner)
             if score_m:
                 s1 = int(score_m.group(1))
                 s2 = int(score_m.group(2))
-                # Everything between date+league and score
                 date_str = entry.group(1)
                 inner_content = entry.group(2)
-                # Try to detect home/away by finding current_team name in inner_content
                 team_lower = current_team.lower()
                 content_lower = inner_content.lower()
-                pos = content_lower.find(team_lower[:4])  # match first 4 chars
+                pos = content_lower.find(team_lower[:4])
                 is_home = pos == 0 or (pos < len(content_lower) // 2)
                 pending_match = {
                     'date': date_str,
@@ -95,7 +85,6 @@ def parse_flashscore(raw_text):
                 }
             continue
 
-        # W/L/D result line
         wld_m = re.match(r'\[([WLD])\]\(', line)
         if wld_m and pending_match and current_team:
             if len(teams_data[current_team]) < 5:
@@ -107,7 +96,6 @@ def parse_flashscore(raw_text):
     return teams_data
 
 def flashscore_to_football_result(match, is_this_team_home):
-    """Convert parsed match to football result dropdown label."""
     wld = match['wld']
     h = match['home_score']
     a = match['away_score']
@@ -115,9 +103,7 @@ def flashscore_to_football_result(match, is_this_team_home):
     opp_score = a if match['is_home'] else h
     diff = abs(team_score - opp_score)
     was_home = match['is_home']
-
     prefix = "🏠 主场" if was_home else "✈️ 客场"
-
     if wld == 'W':
         return f"{prefix}大胜" if diff >= 2 else f"{prefix}小胜"
     elif wld == 'D':
@@ -126,23 +112,86 @@ def flashscore_to_football_result(match, is_this_team_home):
         return f"{prefix}大负" if diff >= 2 else f"{prefix}小负"
 
 def flashscore_to_esports_result(match):
-    """Convert parsed match to esports result dropdown label."""
     wld = match['wld']
     h = match['home_score']
     a = match['away_score']
     team_score = h if match['is_home'] else a
     opp_score = a if match['is_home'] else h
-
     if wld == 'W':
         return "2-0 赢" if team_score == 2 and opp_score == 0 else "2-1 赢"
     elif wld == 'L':
         return "0-2 输" if team_score == 0 else "1-2 输"
     else:
-        return "2-1 赢"  # fallback
+        return "2-1 赢"
+
+# ─── Button Style CSS ─────────────────────────────────────────────────────────
+
+def inject_button_css():
+    pass  # no custom css needed
+
+# ─── Football match input with buttons ───────────────────────────────────────
+
+football_results = {
+    "🏠 主场大胜": {"weight": 1.0,  "is_win": 1, "is_draw": 0, "is_home": True},
+    "🏠 主场小胜": {"weight": 0.75, "is_win": 1, "is_draw": 0, "is_home": True},
+    "🏠 主场平局": {"weight": 0.5,  "is_win": 0, "is_draw": 1, "is_home": True},
+    "🏠 主场小负": {"weight": 0.25, "is_win": 0, "is_draw": 0, "is_home": True},
+    "🏠 主场大负": {"weight": 0.05, "is_win": 0, "is_draw": 0, "is_home": True},
+    "✈️ 客场大胜": {"weight": 1.0,  "is_win": 1, "is_draw": 0, "is_home": False},
+    "✈️ 客场小胜": {"weight": 0.75, "is_win": 1, "is_draw": 0, "is_home": False},
+    "✈️ 客场平局": {"weight": 0.5,  "is_win": 0, "is_draw": 1, "is_home": False},
+    "✈️ 客场小负": {"weight": 0.25, "is_win": 0, "is_draw": 0, "is_home": False},
+    "✈️ 客场大负": {"weight": 0.05, "is_win": 0, "is_draw": 0, "is_home": False},
+}
+
+VENUE_OPTS  = ["🏠 主场", "✈️ 客场"]
+RESULT_OPTS = ["大胜", "小胜", "平局", "小负", "大负"]
+
+def venue_result_to_key(venue, result):
+    prefix = "🏠 主场" if venue == "🏠 主场" else "✈️ 客场"
+    return f"{prefix}{result}"
+
+def render_match_buttons(side, match_idx, num_matches):
+    """Render one match row with venue + result buttons. Returns selected key."""
+    venue_key  = f"{side}_venue_{match_idx}"
+    result_key = f"{side}_result_{match_idx}"
+
+    # Initialise state
+    if venue_key not in st.session_state:
+        st.session_state[venue_key] = "🏠 主场"
+    if result_key not in st.session_state:
+        st.session_state[result_key] = "小胜"
+
+    weight_label = "最新" if match_idx == 0 else f"第{match_idx+1}场"
+    st.markdown(f"**{weight_label}** &nbsp; <span style='font-size:11px;color:rgba(255,255,255,0.3);'>时间权重 {1.0 - match_idx*0.1:.1f}</span>", unsafe_allow_html=True)
+
+    # Row 1: Venue buttons
+    cols_v = st.columns(len(VENUE_OPTS) + 1)
+    cols_v[0].markdown("<span style='font-size:11px;color:rgba(255,255,255,0.4);'>场地</span>", unsafe_allow_html=True)
+    for i, v in enumerate(VENUE_OPTS):
+        is_sel = st.session_state[venue_key] == v
+        btn_type = "primary" if is_sel else "secondary"
+        if cols_v[i+1].button(v, key=f"{venue_key}_btn_{i}", type=btn_type, use_container_width=True):
+            st.session_state[venue_key] = v
+            st.rerun()
+
+    # Row 2: Result buttons
+    cols_r = st.columns(len(RESULT_OPTS) + 1)
+    cols_r[0].markdown("<span style='font-size:11px;color:rgba(255,255,255,0.4);'>结果</span>", unsafe_allow_html=True)
+    for i, r in enumerate(RESULT_OPTS):
+        is_sel = st.session_state[result_key] == r
+        btn_type = "primary" if is_sel else "secondary"
+        if cols_r[i+1].button(r, key=f"{result_key}_btn_{i}", type=btn_type, use_container_width=True):
+            st.session_state[result_key] = r
+            st.rerun()
+
+    st.markdown("---")
+    return venue_result_to_key(st.session_state[venue_key], st.session_state[result_key])
 
 # ─── App ─────────────────────────────────────────────────────────────────────
 
 st.title("运动期望值分析器 🏆")
+inject_button_css()
 
 tab1, tab2, tab3, tab4 = st.tabs(["⚔️ 电竞", "⚽ 足球", "🏀 篮球", "📋 记录"])
 
@@ -153,14 +202,9 @@ with tab1:
         "2-0 赢": 1.0, "2-1 赢": 0.7, "1-2 输": 0.4, "0-2 输": 0.2
     }
 
-    # Flashscore paste section
     with st.expander("📋 从 Flashscore 自动填入（可选）"):
-        fs_text_e = st.text_area(
-            "粘贴 Flashscore 复制内容（包含两队历史）",
-            height=150,
-            key="fs_esports",
-            placeholder="Last matches: Team A\n[17.05.26...]\n[W](...)\n...\nLast matches: Team B\n..."
-        )
+        fs_text_e = st.text_area("粘贴 Flashscore 复制内容（包含两队历史）", height=150, key="fs_esports",
+            placeholder="Last matches: Team A\n[17.05.26...]\n[W](...)\n...")
         if st.button("🔍 自动识别", key="fs_e_parse"):
             if fs_text_e:
                 parsed = parse_flashscore(fs_text_e)
@@ -250,20 +294,16 @@ with tab1:
             st.metric("隐含概率", f"{1/e_home_odds:.1%}")
             st.metric("优势差距", f"{h_wr - 1/e_home_odds:+.1%}")
             st.metric("期望值 (RM100)", f"RM{h_ev:.2f}")
-            if h_ev > 0:
-                st.success("✅ 正期望值")
-            else:
-                st.error("❌ 负期望值")
+            if h_ev > 0: st.success("✅ 正期望值")
+            else: st.error("❌ 负期望值")
         with col6:
             st.subheader(e_away_name)
             st.metric("加权胜率", f"{a_wr:.1%}")
             st.metric("隐含概率", f"{1/e_away_odds:.1%}")
             st.metric("优势差距", f"{a_wr - 1/e_away_odds:+.1%}")
             st.metric("期望值 (RM100)", f"RM{a_ev:.2f}")
-            if a_ev > 0:
-                st.success("✅ 正期望值")
-            else:
-                st.error("❌ 负期望值")
+            if a_ev > 0: st.success("✅ 正期望值")
+            else: st.error("❌ 负期望值")
 
     if "e_result" in st.session_state:
         r = st.session_state["e_result"]
@@ -293,27 +333,10 @@ with tab1:
 # ── TAB 2: 足球 ──────────────────────────────────────────────────────────────
 with tab2:
     st.header("足球期望值分析器")
-    football_results = {
-        "🏠 主场大胜": {"weight": 1.0, "is_win": 1, "is_draw": 0, "is_home": True},
-        "🏠 主场小胜": {"weight": 0.75, "is_win": 1, "is_draw": 0, "is_home": True},
-        "🏠 主场平局": {"weight": 0.5, "is_win": 0, "is_draw": 1, "is_home": True},
-        "🏠 主场小负": {"weight": 0.25, "is_win": 0, "is_draw": 0, "is_home": True},
-        "🏠 主场大负": {"weight": 0.05, "is_win": 0, "is_draw": 0, "is_home": True},
-        "✈️ 客场大胜": {"weight": 1.0, "is_win": 1, "is_draw": 0, "is_home": False},
-        "✈️ 客场小胜": {"weight": 0.75, "is_win": 1, "is_draw": 0, "is_home": False},
-        "✈️ 客场平局": {"weight": 0.5, "is_win": 0, "is_draw": 1, "is_home": False},
-        "✈️ 客场小负": {"weight": 0.25, "is_win": 0, "is_draw": 0, "is_home": False},
-        "✈️ 客场大负": {"weight": 0.05, "is_win": 0, "is_draw": 0, "is_home": False},
-    }
 
-    # Flashscore paste section
     with st.expander("📋 从 Flashscore 自动填入（可选）"):
-        fs_text_f = st.text_area(
-            "粘贴 Flashscore 复制内容（包含两队历史）",
-            height=150,
-            key="fs_football",
-            placeholder="Last matches: Brighton\n[17.05.26PLLeedsBrighton10](...)\n[L](...)\n...\nLast matches: Manchester Utd\n..."
-        )
+        fs_text_f = st.text_area("粘贴 Flashscore 复制内容（包含两队历史）", height=150, key="fs_football",
+            placeholder="Last matches: Brighton\n[17.05.26PLLeedsBrighton10](...)\n[L](...)\n...")
         if st.button("🔍 自动识别", key="fs_f_parse"):
             if fs_text_f:
                 parsed = parse_flashscore(fs_text_f)
@@ -340,10 +363,9 @@ with tab2:
                 st.session_state['f_auto_away_name'] = away_pick
                 home_matches = st.session_state['fs_f_data'].get(home_pick, [])
                 away_matches = st.session_state['fs_f_data'].get(away_pick, [])
+                valid_keys = list(football_results.keys())
                 home_results = [flashscore_to_football_result(m, True) for m in home_matches]
                 away_results = [flashscore_to_football_result(m, False) for m in away_matches]
-                # Validate against football_results keys
-                valid_keys = list(football_results.keys())
                 home_results = [r if r in valid_keys else valid_keys[0] for r in home_results]
                 away_results = [r if r in valid_keys else valid_keys[0] for r in away_results]
                 st.session_state['f_auto_home_results'] = home_results
@@ -393,29 +415,35 @@ with tab2:
         draw_rate = draw_w / total_w if total_w > 0 else 0
         return win_rate, draw_rate
 
-    col7, col8 = st.columns(2)
+    # ── Match input (selectbox) ──────────────────────────────────────────────
+    st.subheader("近期比赛记录")
+    valid_keys = list(football_results.keys())
+    col_h, col_a = st.columns(2)
     f_home_vars = []
     f_away_vars = []
-    auto_home_f = st.session_state.get('f_auto_home_results', [])
-    auto_away_f = st.session_state.get('f_auto_away_results', [])
-    valid_keys = list(football_results.keys())
 
-    with col7:
-        st.subheader(f"{f_home_name} 最近{num_matches_f}场")
+    with col_h:
+        st.markdown(f"**🏠 {f_home_name}**")
+        auto_home_f = st.session_state.get('f_auto_home_results', [])
         for i in range(num_matches_f):
+            label = "最新" if i == 0 else f"第{i+1}场"
             default_val = auto_home_f[i] if i < len(auto_home_f) else valid_keys[0]
             idx = valid_keys.index(default_val) if default_val in valid_keys else 0
-            v = st.selectbox(f"第{i+1}场", valid_keys, index=idx, key=f"fh{i}")
+            v = st.selectbox(label, valid_keys, index=idx, key=f"fh{i}")
             f_home_vars.append(v)
-    with col8:
-        st.subheader(f"{f_away_name} 最近{num_matches_f}场")
+
+    with col_a:
+        st.markdown(f"**✈️ {f_away_name}**")
+        auto_away_f = st.session_state.get('f_auto_away_results', [])
         for i in range(num_matches_f):
+            label = "最新" if i == 0 else f"第{i+1}场"
             default_val = auto_away_f[i] if i < len(auto_away_f) else valid_keys[0]
             idx = valid_keys.index(default_val) if default_val in valid_keys else 0
-            v = st.selectbox(f"第{i+1}场", valid_keys, index=idx, key=f"fa{i}")
+            v = st.selectbox(label, valid_keys, index=idx, key=f"fa{i}")
             f_away_vars.append(v)
 
-    if st.button("计算", key="f_calc", type="primary"):
+        # ── Calculate ─────────────────────────────────────────────────────────────
+    if st.button("⚡ 计算", key="f_calc", type="primary"):
         h_wr, h_dr = calc_football_winrate(f_home_vars, True, venue)
         a_wr, a_dr = calc_football_winrate(f_away_vars, False, venue)
         draw_prob = (h_dr + a_dr) / 2
@@ -436,30 +464,24 @@ with tab2:
             st.metric("隐含概率", f"{1/f_home_odds:.1%}")
             st.metric("优势差距", f"{h_wr - 1/f_home_odds:+.1%}")
             st.metric("期望值 (RM100)", f"RM{h_ev:.2f}")
-            if h_ev > 0:
-                st.success("✅ 正期望值")
-            else:
-                st.error("❌ 负期望值")
+            if h_ev > 0: st.success("✅ 正期望值")
+            else: st.error("❌ 负期望值")
         with col10:
             st.subheader("平局")
             st.metric("平局概率", f"{draw_prob:.1%}")
             st.metric("隐含概率", f"{1/f_draw_odds:.1%}")
             st.metric("优势差距", f"{draw_prob - 1/f_draw_odds:+.1%}")
             st.metric("期望值 (RM100)", f"RM{d_ev:.2f}")
-            if d_ev > 0:
-                st.success("✅ 正期望值")
-            else:
-                st.error("❌ 负期望值")
+            if d_ev > 0: st.success("✅ 正期望值")
+            else: st.error("❌ 负期望值")
         with col11:
             st.subheader(f_away_name)
             st.metric("加权胜率", f"{a_wr:.1%}")
             st.metric("隐含概率", f"{1/f_away_odds:.1%}")
             st.metric("优势差距", f"{a_wr - 1/f_away_odds:+.1%}")
             st.metric("期望值 (RM100)", f"RM{a_ev:.2f}")
-            if a_ev > 0:
-                st.success("✅ 正期望值")
-            else:
-                st.error("❌ 负期望值")
+            if a_ev > 0: st.success("✅ 正期望值")
+            else: st.error("❌ 负期望值")
 
     if "f_result" in st.session_state:
         r = st.session_state["f_result"]
@@ -474,20 +496,14 @@ with tab2:
             f_res = st.selectbox("实际结果", ["待定", "主队赢", "平局", "客队赢"], key="f_res")
         if st.button("保存记录", key="f_save"):
             if f_bet == r["h_name"]:
-                odds_used = r["h_odds"]
-                win_condition = "主队赢"
+                odds_used = r["h_odds"]; win_condition = "主队赢"
             elif f_bet == "平局":
-                odds_used = r["d_odds"]
-                win_condition = "平局"
+                odds_used = r["d_odds"]; win_condition = "平局"
             else:
-                odds_used = r["a_odds"]
-                win_condition = "客队赢"
-            if f_res == "待定":
-                pnl = 0
-            elif f_res == win_condition:
-                pnl = (odds_used-1)*f_stake
-            else:
-                pnl = -f_stake
+                odds_used = r["a_odds"]; win_condition = "客队赢"
+            if f_res == "待定": pnl = 0
+            elif f_res == win_condition: pnl = (odds_used-1)*f_stake
+            else: pnl = -f_stake
             record = {
                 "日期": str(date.today()), "运动": "足球",
                 "主队": r["h_name"], "客队": r["a_name"],
@@ -555,20 +571,17 @@ with tab3:
             st.metric("隐含概率", f"{1/b_home_odds:.1%}")
             st.metric("优势差距", f"{h_wr - 1/b_home_odds:+.1%}")
             st.metric("期望值 (RM100)", f"RM{h_ev:.2f}")
-            if h_ev > 0:
-                st.success("✅ 正期望值")
-            else:
-                st.error("❌ 负期望值")
+            if h_ev > 0: st.success("✅ 正期望值")
+            else: st.error("❌ 负期望值")
         with col6:
             st.subheader(b_away_name)
             st.metric("加权胜率", f"{a_wr:.1%}")
             st.metric("隐含概率", f"{1/b_away_odds:.1%}")
             st.metric("优势差距", f"{a_wr - 1/b_away_odds:+.1%}")
             st.metric("期望值 (RM100)", f"RM{a_ev:.2f}")
-            if a_ev > 0:
-                st.success("✅ 正期望值")
-            else:
-                st.error("❌ 负期望值")
+            if a_ev > 0: st.success("✅ 正期望值")
+            else: st.error("❌ 负期望值")
+
     if "b_result" in st.session_state:
         r = st.session_state["b_result"]
         st.divider()
@@ -608,14 +621,10 @@ with tab4:
         pending = len(df[df["实际结果"] == "待定"])
         total_pnl = pd.to_numeric(known["盈亏(RM)"], errors="coerce").sum()
         col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("总记录", total)
-        with col2:
-            st.metric("已结算", len(known))
-        with col3:
-            st.metric("待定", pending)
-        with col4:
-            st.metric("总盈亏", f"RM{total_pnl:.2f}")
+        with col1: st.metric("总记录", total)
+        with col2: st.metric("已结算", len(known))
+        with col3: st.metric("待定", pending)
+        with col4: st.metric("总盈亏", f"RM{total_pnl:.2f}")
         st.divider()
         st.dataframe(df, use_container_width=True)
         pending_df = df[df["实际结果"] == "待定"]
