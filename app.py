@@ -4,7 +4,6 @@ import streamlit as st
 import pandas as pd
 from datetime import date
 import re
-import requests
 
 SHEET_ID = "1LWzu7jwRan5-WSGhWUxnmwCLJ0iyxhVH07bLojGD-3s"
 SCOPES = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -59,14 +58,34 @@ football_results = {
     "✈️ 客场大负": {"weight": 0.05, "is_win": 0, "is_draw": 0, "is_home": False},
 }
 
+# ─── Esports score weights (支持 BO1 / BO2 / BO3 / BO5) ──────────────────────
+# 赢：大胜=1.0, 小胜=0.7 | 输：小负=0.4, 大负=0.2
+# BO1: 1-0赢, 0-1输
+# BO3: 2-0大胜, 2-1小胜, 1-2小负, 0-2大负
+# BO5: 3-0大胜, 3-1小胜, 3-2小胜, 2-3小负, 1-3小负, 0-3大负
+
 score_weights_esports = {
-    "2-0 赢": 1.0, "2-1 赢": 0.7, "1-2 输": 0.4, "0-2 输": 0.2
+    # BO1
+    "1-0 赢": 1.0,
+    "0-1 输": 0.2,
+    # BO3
+    "2-0 赢": 1.0,
+    "2-1 赢": 0.7,
+    "1-2 输": 0.4,
+    "0-2 输": 0.2,
+    # BO5
+    "3-0 赢": 1.0,
+    "3-1 赢": 0.7,
+    "3-2 赢": 0.7,
+    "2-3 输": 0.4,
+    "1-3 输": 0.4,
+    "0-3 输": 0.2,
 }
 
 # ─── 比分转换函数 ─────────────────────────────────────────────────────────────
 
 def score_to_football_result(score_str, is_home):
-    """比分 + 主客场 → football_results key。大胜/大负 = 差距>=3球"""
+    """比分+主客场 → football_results key。大胜/大负 = 差距≥3球"""
     score_str = score_str.strip()
     if not re.match(r'^\d+-\d+$', score_str):
         return None
@@ -84,18 +103,16 @@ def score_to_football_result(score_str, is_home):
         return f"{venue}大负" if diff >= 3 else f"{venue}小负"
 
 def score_to_esports_result(score_str):
-    """比分 → esports key"""
+    """比分 → esports key，支持 BO1/BO3/BO5"""
     score_str = score_str.strip()
-    if not re.match(r'^\d-\d$', score_str):
+    if not re.match(r'^\d+-\d+$', score_str):
         return None
     try:
-        a, b = int(score_str[0]), int(score_str[2])
+        a, b = map(int, score_str.split('-'))
     except:
         return None
-    if a > b:
-        return "2-0 赢" if (a == 2 and b == 0) else "2-1 赢"
-    else:
-        return "0-2 输" if (a == 0) else "1-2 输"
+    key = f"{a}-{b} {'赢' if a > b else '输'}"
+    return key if key in score_weights_esports else None
 
 result_emoji_football = {
     "🏠 主场大胜": "🏆 主场大胜 (≥+3)",
@@ -111,10 +128,18 @@ result_emoji_football = {
 }
 
 result_emoji_esports = {
+    "1-0 赢": "🏆 BO1 赢",
+    "0-1 输": "💀 BO1 输",
     "2-0 赢": "🏆 2-0 大胜",
     "2-1 赢": "✅ 2-1 小胜",
     "1-2 输": "❌ 1-2 小负",
     "0-2 输": "💀 0-2 大负",
+    "3-0 赢": "🏆 3-0 大胜",
+    "3-1 赢": "✅ 3-1 小胜",
+    "3-2 赢": "✅ 3-2 小胜",
+    "2-3 输": "❌ 2-3 小负",
+    "1-3 输": "❌ 1-3 小负",
+    "0-3 输": "💀 0-3 大负",
 }
 
 # ─── 甜蜜点检查 ───────────────────────────────────────────────────────────────
@@ -152,8 +177,8 @@ with tab1:
 
     st.divider()
     num_matches_e = st.slider("最近几场比赛？", 1, 5, 5, key="e_slider")
+    st.caption("支持 BO1 (1-0/0-1) · BO3 (2-0/2-1/1-2/0-2) · BO5 (3-0/3-1/3-2/2-3/1-3/0-3)")
 
-    st.markdown("**填入比分（格式：2-1，左边是该队得分）**")
     col3, col4 = st.columns(2)
     e_home_vars = []
     e_away_vars = []
@@ -162,28 +187,28 @@ with tab1:
         st.markdown(f"**{e_home_name}**")
         for i in range(num_matches_e):
             label = "最新" if i == 0 else f"第{i+1}场"
-            score_input = st.text_input(label, value="", placeholder="2-1 / 0-2", key=f"eh_score_{i}")
+            score_input = st.text_input(label, value="", placeholder="2-1 / 1-0 / 3-2", key=f"eh_score_{i}")
             result = score_to_esports_result(score_input)
             if result:
                 st.caption(f"→ {result_emoji_esports.get(result, result)}")
                 e_home_vars.append(result)
             else:
                 if score_input:
-                    st.caption("⚠️ 请填 2-0 / 2-1 / 1-2 / 0-2")
+                    st.caption("⚠️ 请填有效比分如 2-1 / 1-0 / 3-2")
                 e_home_vars.append("2-1 赢")
 
     with col4:
         st.markdown(f"**{e_away_name}**")
         for i in range(num_matches_e):
             label = "最新" if i == 0 else f"第{i+1}场"
-            score_input = st.text_input(label, value="", placeholder="2-1 / 0-2", key=f"ea_score_{i}")
+            score_input = st.text_input(label, value="", placeholder="2-1 / 1-0 / 3-2", key=f"ea_score_{i}")
             result = score_to_esports_result(score_input)
             if result:
                 st.caption(f"→ {result_emoji_esports.get(result, result)}")
                 e_away_vars.append(result)
             else:
                 if score_input:
-                    st.caption("⚠️ 请填 2-0 / 2-1 / 1-2 / 0-2")
+                    st.caption("⚠️ 请填有效比分如 2-1 / 1-0 / 3-2")
                 e_away_vars.append("2-1 赢")
 
     if st.button("⚡ 计算", key="e_calc", type="primary"):
@@ -215,9 +240,12 @@ with tab1:
             st.metric("优势差距", f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
             st.metric("期望值 (RM100)", f"RM{r['h_ev']:.2f}")
             sweet = check_sweet_spot_esports(r['h_wr']*100, r['a_wr']*100, r['h_ev'])
-            if sweet: st.success(sweet)
-            elif r['h_ev'] > 0: st.success("✅ 正期望值")
-            else: st.error("❌ 负期望值")
+            if sweet:
+                st.success(sweet)
+            elif r['h_ev'] > 0:
+                st.success("✅ 正期望值")
+            else:
+                st.error("❌ 负期望值")
         with col6:
             st.subheader(r["a_name"])
             st.metric("加权胜率", f"{r['a_wr']:.1%}")
@@ -225,9 +253,12 @@ with tab1:
             st.metric("优势差距", f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
             st.metric("期望值 (RM100)", f"RM{r['a_ev']:.2f}")
             sweet = check_sweet_spot_esports(r['a_wr']*100, r['h_wr']*100, r['a_ev'])
-            if sweet: st.success(sweet)
-            elif r['a_ev'] > 0: st.success("✅ 正期望值")
-            else: st.error("❌ 负期望值")
+            if sweet:
+                st.success(sweet)
+            elif r['a_ev'] > 0:
+                st.success("✅ 正期望值")
+            else:
+                st.error("❌ 负期望值")
 
         st.divider()
         st.subheader("💾 保存记录")
@@ -369,17 +400,22 @@ with tab2:
             st.metric("优势差距", f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
             st.metric("期望值 (RM100)", f"RM{r['h_ev']:.2f}")
             sweet = check_sweet_spot_football(r['h_wr']*100, r['h_ev'])
-            if sweet: st.success(sweet)
-            elif r['h_ev'] > 0: st.success("✅ 正期望值")
-            else: st.error("❌ 负期望值")
+            if sweet:
+                st.success(sweet)
+            elif r['h_ev'] > 0:
+                st.success("✅ 正期望值")
+            else:
+                st.error("❌ 负期望值")
         with col10:
             st.subheader("平局")
             st.metric("平局概率", f"{r['draw_prob']:.1%}")
             st.metric("隐含概率", f"{1/r['d_odds']:.1%}")
             st.metric("优势差距", f"{r['draw_prob'] - 1/r['d_odds']:+.1%}")
             st.metric("期望值 (RM100)", f"RM{r['d_ev']:.2f}")
-            if r['d_ev'] > 0: st.success("✅ 正期望值")
-            else: st.error("❌ 负期望值")
+            if r['d_ev'] > 0:
+                st.success("✅ 正期望值")
+            else:
+                st.error("❌ 负期望值")
         with col11:
             st.subheader(f_away_name)
             st.metric("加权胜率", f"{r['a_wr']:.1%}")
@@ -387,9 +423,12 @@ with tab2:
             st.metric("优势差距", f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
             st.metric("期望值 (RM100)", f"RM{r['a_ev']:.2f}")
             sweet = check_sweet_spot_football(r['a_wr']*100, r['a_ev'])
-            if sweet: st.success(sweet)
-            elif r['a_ev'] > 0: st.success("✅ 正期望值")
-            else: st.error("❌ 负期望值")
+            if sweet:
+                st.success(sweet)
+            elif r['a_ev'] > 0:
+                st.success("✅ 正期望值")
+            else:
+                st.error("❌ 负期望值")
 
         st.divider()
         st.subheader("💾 保存记录")
