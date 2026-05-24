@@ -79,7 +79,7 @@ def get_last_5_matches(team_id):
         r = requests.get(
             f"{API_BASE}/fixtures",
             headers=api_headers(),
-            params={"team": team_id, "last": 5, "status": "FT"},
+            params={"team": team_id, "last": 5},
             timeout=10
         )
         data = r.json()
