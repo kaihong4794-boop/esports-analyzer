@@ -58,15 +58,11 @@ football_results = {
     "✈️ 客场大负": {"weight": 0.05, "is_win": 0, "is_draw": 0, "is_home": False},
 }
 
-# ─── Esports score weights (支持 BO1 / BO2 / BO3 / BO5) ──────────────────────
-# 赢：大胜=1.0, 小胜=0.7 | 输：小负=0.4, 大负=0.2
-# BO1: 1-0赢, 0-1输
-# BO3: 2-0大胜, 2-1小胜, 1-2小负, 0-2大负
-# BO5: 3-0大胜, 3-1小胜, 3-2小胜, 2-3小负, 1-3小负, 0-3大负
+# ─── Esports score weights (BO1 / BO3 / BO5) ─────────────────────────────────
 
 score_weights_esports = {
     # BO1
-    "1-0 赢": 1.0,
+    "1-0 赢": 0.85,
     "0-1 输": 0.2,
     # BO3
     "2-0 赢": 1.0,
@@ -75,44 +71,12 @@ score_weights_esports = {
     "0-2 输": 0.2,
     # BO5
     "3-0 赢": 1.0,
-    "3-1 赢": 0.7,
-    "3-2 赢": 0.7,
+    "3-1 赢": 0.75,
+    "3-2 赢": 0.6,
     "2-3 输": 0.4,
-    "1-3 输": 0.4,
+    "1-3 输": 0.3,
     "0-3 输": 0.2,
 }
-
-# ─── 比分转换函数 ─────────────────────────────────────────────────────────────
-
-def score_to_football_result(score_str, is_home):
-    """比分+主客场 → football_results key。大胜/大负 = 差距≥3球"""
-    score_str = score_str.strip()
-    if not re.match(r'^\d+-\d+$', score_str):
-        return None
-    try:
-        a, b = map(int, score_str.split('-'))
-    except:
-        return None
-    venue = "🏠 主场" if is_home else "✈️ 客场"
-    diff = abs(a - b)
-    if a > b:
-        return f"{venue}大胜" if diff >= 3 else f"{venue}小胜"
-    elif a == b:
-        return f"{venue}平局"
-    else:
-        return f"{venue}大负" if diff >= 3 else f"{venue}小负"
-
-def score_to_esports_result(score_str):
-    """比分 → esports key，支持 BO1/BO3/BO5"""
-    score_str = score_str.strip()
-    if not re.match(r'^\d+-\d+$', score_str):
-        return None
-    try:
-        a, b = map(int, score_str.split('-'))
-    except:
-        return None
-    key = f"{a}-{b} {'赢' if a > b else '输'}"
-    return key if key in score_weights_esports else None
 
 result_emoji_football = {
     "🏠 主场大胜": "🏆 主场大胜 (≥+3)",
@@ -142,18 +106,66 @@ result_emoji_esports = {
     "0-3 输": "💀 0-3 大负",
 }
 
+# ─── 比分转换函数 ─────────────────────────────────────────────────────────────
+
+def score_to_football_result(score_str, is_home):
+    """实际比分(主队-客队) + 是否主队 → football_results key。大胜/大负 = 差距≥3球"""
+    score_str = score_str.strip()
+    if not re.match(r'^\d+-\d+$', score_str):
+        return None
+    try:
+        home_score, away_score = map(int, score_str.split('-'))
+    except:
+        return None
+    # 从该队角度看
+    my_score = home_score if is_home else away_score
+    opp_score = away_score if is_home else home_score
+    diff = abs(my_score - opp_score)
+    venue = "🏠 主场" if is_home else "✈️ 客场"
+    if my_score > opp_score:
+        return f"{venue}大胜" if diff >= 3 else f"{venue}小胜"
+    elif my_score == opp_score:
+        return f"{venue}平局"
+    else:
+        return f"{venue}大负" if diff >= 3 else f"{venue}小负"
+
+def score_to_esports_result(score_str):
+    """比分 → esports key，支持 BO1/BO3/BO5"""
+    score_str = score_str.strip()
+    if not re.match(r'^\d+-\d+$', score_str):
+        return None
+    try:
+        a, b = map(int, score_str.split('-'))
+    except:
+        return None
+    key = f"{a}-{b} {'赢' if a > b else ('输' if a < b else None)}"
+    return key if key in score_weights_esports else None
+
 # ─── 甜蜜点检查 ───────────────────────────────────────────────────────────────
 
 def check_sweet_spot_football(wp, ev):
     if wp >= 50 and -50 <= ev < 0:
-        return "🎯 甜蜜点！WP≥50% + EV -50~0"
+        return "🎯🎯 强甜蜜点！WP≥50% + EV -50~0"
+    if -50 <= ev < -20:
+        return "🎯 弱甜蜜点！EV -50~-20"
     return None
 
-def check_sweet_spot_esports(wp, opp_wp, ev):
+def check_sweet_spot_esports_winloss(wp, opp_wp):
     diff = abs(wp - opp_wp)
-    if wp >= 60 and diff >= 20 and ev < 0:
-        return f"🎯 甜蜜点！WP≥60% + 差距{diff:.0f}% + EV负"
+    if wp >= 60 and diff >= 20:
+        return f"🎯🎯 强甜蜜点！WP≥60% + 差距{diff:.0f}%"
+    if diff < 10:
+        return "⚠️ 势均力敌，胜负不建议押"
     return None
+
+def check_sweet_spot_esports_totals(wp, opp_wp):
+    diff = abs(wp - opp_wp)
+    if diff < 10:
+        return "🎯 大小盘：押大（64%打满）"
+    elif diff <= 20:
+        return "🎯 大小盘：押小（82%速胜）"
+    else:
+        return "🎯 大小盘：押大（71%+打满）"
 
 # ─── App ──────────────────────────────────────────────────────────────────────
 
@@ -194,7 +206,7 @@ with tab1:
                 e_home_vars.append(result)
             else:
                 if score_input:
-                    st.caption("⚠️ 请填有效比分如 2-1 / 1-0 / 3-2")
+                    st.caption("⚠️ 请填有效比分")
                 e_home_vars.append("2-1 赢")
 
     with col4:
@@ -208,7 +220,7 @@ with tab1:
                 e_away_vars.append(result)
             else:
                 if score_input:
-                    st.caption("⚠️ 请填有效比分如 2-1 / 1-0 / 3-2")
+                    st.caption("⚠️ 请填有效比分")
                 e_away_vars.append("2-1 赢")
 
     if st.button("⚡ 计算", key="e_calc", type="primary"):
@@ -232,6 +244,12 @@ with tab1:
     if "e_result" in st.session_state:
         r = st.session_state["e_result"]
         st.divider()
+
+        # 大小盘提示（只显示一次，基于双方差距）
+        totals_tip = check_sweet_spot_esports_totals(r['h_wr']*100, r['a_wr']*100)
+        if totals_tip:
+            st.info(f"📊 大小盘参考：{totals_tip}")
+
         col5, col6 = st.columns(2)
         with col5:
             st.subheader(r["h_name"])
@@ -239,21 +257,26 @@ with tab1:
             st.metric("隐含概率", f"{1/r['h_odds']:.1%}")
             st.metric("优势差距", f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
             st.metric("期望值 (RM100)", f"RM{r['h_ev']:.2f}")
-            sweet = check_sweet_spot_esports(r['h_wr']*100, r['a_wr']*100, r['h_ev'])
-            if sweet:
+            sweet = check_sweet_spot_esports_winloss(r['h_wr']*100, r['a_wr']*100)
+            if sweet and "⚠️" in sweet:
+                st.warning(sweet)
+            elif sweet:
                 st.success(sweet)
             elif r['h_ev'] > 0:
                 st.success("✅ 正期望值")
             else:
                 st.error("❌ 负期望值")
+
         with col6:
             st.subheader(r["a_name"])
             st.metric("加权胜率", f"{r['a_wr']:.1%}")
             st.metric("隐含概率", f"{1/r['a_odds']:.1%}")
             st.metric("优势差距", f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
             st.metric("期望值 (RM100)", f"RM{r['a_ev']:.2f}")
-            sweet = check_sweet_spot_esports(r['a_wr']*100, r['h_wr']*100, r['a_ev'])
-            if sweet:
+            sweet = check_sweet_spot_esports_winloss(r['a_wr']*100, r['h_wr']*100)
+            if sweet and "⚠️" in sweet:
+                st.warning(sweet)
+            elif sweet:
                 st.success(sweet)
             elif r['a_ev'] > 0:
                 st.success("✅ 正期望值")
@@ -330,7 +353,7 @@ with tab2:
         return win_rate, draw_rate
 
     st.subheader("近期比赛记录")
-    st.caption("填比分（该队得分-对手得分）+ 选主客场 | 大胜/大负 = 差距≥3球")
+    st.caption("填实际比分（主队得分-客队得分）+ 选该队是主场还是客场 | 大胜/大负 = 差距≥3球")
 
     valid_keys = list(football_results.keys())
     col_h2, col_a2 = st.columns(2)
@@ -343,7 +366,7 @@ with tab2:
             label = "最新" if i == 0 else f"第{i+1}场"
             c1, c2 = st.columns([2, 1])
             with c1:
-                score_input = st.text_input(label, value="", placeholder="2-1", key=f"fh_score_{i}")
+                score_input = st.text_input(label, value="", placeholder="主队-客队 如 2-1", key=f"fh_score_{i}")
             with c2:
                 venue_sel = st.selectbox("", ["主场🏠", "客场✈️"], key=f"fh_venue_{i}", label_visibility="collapsed")
             is_home = "主场" in venue_sel
@@ -362,7 +385,7 @@ with tab2:
             label = "最新" if i == 0 else f"第{i+1}场"
             c1, c2 = st.columns([2, 1])
             with c1:
-                score_input = st.text_input(label, value="", placeholder="2-1", key=f"fa_score_{i}")
+                score_input = st.text_input(label, value="", placeholder="主队-客队 如 2-1", key=f"fa_score_{i}")
             with c2:
                 venue_sel = st.selectbox("", ["主场🏠", "客场✈️"], index=1, key=f"fa_venue_{i}", label_visibility="collapsed")
             is_home = "主场" in venue_sel
