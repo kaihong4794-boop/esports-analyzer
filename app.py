@@ -319,23 +319,21 @@ with tab1:
 with tab2:
     st.header("足球期望值分析器")
 
-    col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
+    col1, col2 = st.columns(2)
     with col1:
         f_home_name = st.text_input("主队名字", "主队", key="f_home_name")
     with col2:
         f_away_name = st.text_input("客队名字", "客队", key="f_away_name")
-    with col3:
-        st.write("")
-    with col4:
-        venue = st.selectbox("场地", ["主队主场", "客队主场", "中立场"], key="f_venue")
 
-    col5, col6, col7 = st.columns(3)
-    with col5:
+    col3, col4, col5, col6 = st.columns([2, 2, 2, 2])
+    with col3:
         f_home_odds = st.number_input("主队赔率", min_value=1.01, value=2.0, step=0.01, key="f_home_odds")
-    with col6:
+    with col4:
         f_draw_odds = st.number_input("平局赔率", min_value=1.01, value=3.0, step=0.01, key="f_draw_odds")
-    with col7:
+    with col5:
         f_away_odds = st.number_input("客队赔率", min_value=1.01, value=3.5, step=0.01, key="f_away_odds")
+    with col6:
+        venue = st.selectbox("场地", ["主队主场", "客队主场", "中立场"], key="f_venue")
 
     st.divider()
     num_matches_f = st.slider("最近几场比赛？", 1, 5, 5, key="f_slider")
