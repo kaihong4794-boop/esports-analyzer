@@ -74,22 +74,34 @@ def search_team(name):
 
 @st.cache_data(ttl=3600)
 def get_last_5_matches(team_id):
-    """抓取球队最近5场比赛结果"""
+    """抓取球队最近5场比赛结果（免费版用赛季参数）"""
     try:
-        r = requests.get(
-            f"{API_BASE}/fixtures",
-            headers=api_headers(),
-            params={"team": team_id, "last": 5},
-            timeout=10
-        )
-        data = r.json()
-        # Debug: show raw response count
-        raw_count = len(data.get("response", []))
-        if raw_count == 0:
-            st.warning(f"API 返回 0 场比赛。错误信息: {data.get('errors', '')}")
+        from datetime import datetime
+        current_year = datetime.now().year
+        # 试今年赛季，如果没有就试去年
+        for season in [current_year, current_year - 1]:
+            r = requests.get(
+                f"{API_BASE}/fixtures",
+                headers=api_headers(),
+                params={"team": team_id, "season": season, "status": "FT"},
+                timeout=10
+            )
+            data = r.json()
+            all_fixtures = data.get("response", [])
+            if all_fixtures:
+                # 按日期排序，取最近5场
+                all_fixtures.sort(key=lambda x: x["fixture"]["date"], reverse=True)
+                all_fixtures = all_fixtures[:5]
+                break
+        else:
+            all_fixtures = []
+
+        if not all_fixtures:
+            st.warning(f"找不到比赛记录。API错误: {data.get('errors', '')}")
             return []
+
         matches = []
-        for fixture in data.get("response", []):
+        for fixture in all_fixtures:
             home = fixture["teams"]["home"]
             away = fixture["teams"]["away"]
             goals = fixture["goals"]
@@ -118,6 +130,8 @@ def get_last_5_matches(team_id):
     except Exception as e:
         st.error(f"抓取比赛数据失败: {e}")
         return []
+
+
 
 def render_team_search(side_label, session_key_prefix):
     """渲染球队搜索 + 自动填入 UI，返回 (team_name, [result_keys])"""
