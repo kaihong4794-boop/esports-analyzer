@@ -7,7 +7,7 @@ import re
 
 SHEET_ID = "1LWzu7jwRan5-WSGhWUxnmwCLJ0iyxhVH07bLojGD-3s"
 SCOPES = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-HEADERS = ["日期","运动","主队","客队","主队加权胜率","平局加权胜率","客队加权胜率","主队期望值","平局期望值","客队期望值","注额(RM)","押注选项","实际结果","盈亏(RM)"]
+HEADERS = ["日期","运动","主队","客队","主队加权胜率","平局加权胜率","客队加权胜率","主队期望值","平局期望值","客队期望值","注额(RM)","押注选项","实际结果","盈亏(RM)","比赛结果","甜蜜点"]
 
 # ─── Google Sheets ────────────────────────────────────────────────────────────
 
@@ -287,7 +287,7 @@ with tab1:
         st.subheader("💾 保存记录")
         col7, col8, col9 = st.columns(3)
         with col7:
-            e_stake = st.number_input("注额 (RM)", min_value=0, value=100, key="e_stake")
+            e_stake = st.number_input("注额 (RM)", min_value=0, value=0, key="e_stake")
         with col8:
             e_bet = st.selectbox("押注队伍", [r["h_name"], r["a_name"]], key="e_bet")
         with col9:
@@ -295,13 +295,20 @@ with tab1:
         if st.button("保存记录", key="e_save"):
             odds_used = r["h_odds"] if e_bet == r["h_name"] else r["a_odds"]
             pnl = (odds_used-1)*e_stake if e_res == "赢" else (-e_stake if e_res == "输" else 0)
+            # 计算甜蜜点
+            bet_wp = r['h_wr']*100 if e_bet == r["h_name"] else r['a_wr']*100
+            opp_wp = r['a_wr']*100 if e_bet == r["h_name"] else r['h_wr']*100
+            sweet_val = check_sweet_spot_esports_winloss(bet_wp, opp_wp) or ""
+            totals_val = check_sweet_spot_esports_totals(r['h_wr']*100, r['a_wr']*100) or ""
+            sweet_combined = " | ".join(filter(None, [sweet_val, totals_val]))
             record = {
                 "日期": str(date.today()), "运动": "电竞",
                 "主队": r["h_name"], "客队": r["a_name"],
                 "主队加权胜率": f"{r['h_wr']:.1%}", "客队加权胜率": f"{r['a_wr']:.1%}",
                 "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A",
                 "客队期望值": f"{r['a_ev']:.2f}", "注额(RM)": e_stake,
-                "押注选项": e_bet, "实际结果": e_res, "盈亏(RM)": pnl
+                "押注选项": e_bet, "实际结果": e_res, "盈亏(RM)": pnl,
+                "比赛结果": "", "甜蜜点": sweet_combined
             }
             save_to_sheet(record)
             st.success("✅ 记录已保存！")
@@ -457,7 +464,7 @@ with tab2:
         st.subheader("💾 保存记录")
         col12, col13, col14 = st.columns(3)
         with col12:
-            f_stake = st.number_input("注额 (RM)", min_value=0, value=100, key="f_stake")
+            f_stake = st.number_input("注额 (RM)", min_value=0, value=0, key="f_stake")
         with col13:
             f_bet = st.selectbox("押注选项", [r["h_name"], "平局", r["a_name"]], key="f_bet")
         with col14:
@@ -472,6 +479,10 @@ with tab2:
             if f_res == "待定": pnl = 0
             elif f_res == win_condition: pnl = (odds_used-1)*f_stake
             else: pnl = -f_stake
+            # 计算甜蜜点
+            bet_wp = r['h_wr']*100 if f_bet == r["h_name"] else r['a_wr']*100
+            bet_ev = r['h_ev'] if f_bet == r["h_name"] else r['a_ev']
+            sweet_val = check_sweet_spot_football(bet_wp, bet_ev) or ""
             record = {
                 "日期": str(date.today()), "运动": "足球",
                 "主队": r["h_name"], "客队": r["a_name"],
@@ -479,7 +490,8 @@ with tab2:
                 "客队加权胜率": f"{r['a_wr']:.1%}",
                 "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": f"{r['d_ev']:.2f}",
                 "客队期望值": f"{r['a_ev']:.2f}", "注额(RM)": f_stake,
-                "押注选项": f_bet, "实际结果": f_res, "盈亏(RM)": pnl
+                "押注选项": f_bet, "实际结果": f_res, "盈亏(RM)": pnl,
+                "比赛结果": "", "甜蜜点": sweet_val
             }
             save_to_sheet(record)
             st.success("✅ 记录已保存！")
@@ -559,7 +571,7 @@ with tab3:
         st.subheader("💾 保存记录")
         col7, col8, col9 = st.columns(3)
         with col7:
-            b_stake = st.number_input("注额 (RM)", min_value=0, value=100, key="b_stake")
+            b_stake = st.number_input("注额 (RM)", min_value=0, value=0, key="b_stake")
         with col8:
             b_bet = st.selectbox("押注队伍", [r["h_name"], r["a_name"]], key="b_bet")
         with col9:
@@ -573,7 +585,8 @@ with tab3:
                 "主队加权胜率": f"{r['h_wr']:.1%}", "客队加权胜率": f"{r['a_wr']:.1%}",
                 "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A",
                 "客队期望值": f"{r['a_ev']:.2f}", "注额(RM)": b_stake,
-                "押注选项": b_bet, "实际结果": b_res, "盈亏(RM)": pnl
+                "押注选项": b_bet, "实际结果": b_res, "盈亏(RM)": pnl,
+                "比赛结果": "", "甜蜜点": ""
             }
             save_to_sheet(record)
             st.success("✅ 记录已保存！")
