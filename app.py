@@ -146,8 +146,8 @@ def score_to_esports_result(score_str):
 def check_sweet_spot_football(wp, ev):
     if wp >= 50 and -50 <= ev < 0:
         return "🎯🎯 强甜蜜点！WP≥50% + EV -50~0"
-    if -50 <= ev < -20:
-        return "🎯 弱甜蜜点！EV -50~-20"
+    if wp >= 40 and -50 <= ev < -20:
+        return "🎯 弱甜蜜点！WP≥40% + EV -50~-20"
     return None
 
 def check_sweet_spot_esports_winloss(wp, opp_wp):
