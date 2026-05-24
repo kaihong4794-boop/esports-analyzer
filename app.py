@@ -83,6 +83,11 @@ def get_last_5_matches(team_id):
             timeout=10
         )
         data = r.json()
+        # Debug: show raw response count
+        raw_count = len(data.get("response", []))
+        if raw_count == 0:
+            st.warning(f"API 返回 0 场比赛。错误信息: {data.get('errors', '')}")
+            return []
         matches = []
         for fixture in data.get("response", []):
             home = fixture["teams"]["home"]
