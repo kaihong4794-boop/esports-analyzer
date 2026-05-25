@@ -150,16 +150,6 @@ def check_sweet_spot_football(wp, ev):
         return "🎯 弱甜蜜点！WP≥40% + EV -40~-20"
     return None
 
-def check_football_totals(home_wp, away_wp, home_ev):
-    diff = abs(home_wp - away_wp)
-    if -20 <= home_ev < 0:
-        return "📊 大小盘：押大（EV-20~0，86%大球）"
-    if diff <= 20:
-        return "📊 大小盘：押小（差距≤20%，60%小球）"
-    if 40 <= diff < 60:
-        return "📊 大小盘：押大（差距40-60%，75%大球）"
-    return None
-
 def check_sweet_spot_esports_winloss(wp, opp_wp):
     diff = abs(wp - opp_wp)
     if wp >= 60 and diff >= 20:
@@ -167,15 +157,6 @@ def check_sweet_spot_esports_winloss(wp, opp_wp):
     if diff < 10:
         return "⚠️ 势均力敌，胜负不建议押"
     return None
-
-def check_sweet_spot_esports_totals(wp, opp_wp):
-    diff = abs(wp - opp_wp)
-    if diff < 10:
-        return "🎯 大小盘：押大（64%打满）"
-    elif diff <= 20:
-        return "🎯 大小盘：押小（82%速胜）"
-    else:
-        return "🎯 大小盘：押大（71%+打满）"
 
 # ─── App ──────────────────────────────────────────────────────────────────────
 
@@ -255,11 +236,6 @@ with tab1:
         r = st.session_state["e_result"]
         st.divider()
 
-        # 大小盘提示（只显示一次，基于双方差距）
-        totals_tip = check_sweet_spot_esports_totals(r['h_wr']*100, r['a_wr']*100)
-        if totals_tip:
-            st.info(f"📊 大小盘参考：{totals_tip}")
-
         col5, col6 = st.columns(2)
         with col5:
             st.subheader(r["h_name"])
@@ -295,9 +271,7 @@ with tab1:
 
         st.divider()
         if st.button("💾 保存记录", key="e_save"):
-            sweet_val = check_sweet_spot_esports_winloss(r['h_wr']*100, r['a_wr']*100) or ""
-            totals_val = check_sweet_spot_esports_totals(r['h_wr']*100, r['a_wr']*100) or ""
-            sweet_combined = " | ".join(filter(None, [sweet_val, totals_val]))
+            sweet_combined = check_sweet_spot_esports_winloss(r['h_wr']*100, r['a_wr']*100) or ""
             record = {
                 "日期": str(date.today()), "运动": "电竞",
                 "主队": r["h_name"], "客队": r["a_name"],
@@ -419,11 +393,6 @@ with tab2:
         r = st.session_state["f_result"]
         st.divider()
         col9, col10, col11 = st.columns(3)
-
-        # 大小盘提示（只显示一次）
-        totals_tip = check_football_totals(r['h_wr']*100, r['a_wr']*100, r['h_ev'])
-        if totals_tip:
-            st.info(totals_tip)
         with col9:
             st.subheader(f_home_name)
             st.metric("加权胜率", f"{r['h_wr']:.1%}")
@@ -464,8 +433,6 @@ with tab2:
         st.divider()
         if st.button("💾 保存记录", key="f_save"):
             sweet_val = check_sweet_spot_football(r['h_wr']*100, r['h_ev']) or check_sweet_spot_football(r['a_wr']*100, r['a_ev']) or ""
-            totals_tip = check_football_totals(r['h_wr']*100, r['a_wr']*100, r['h_ev']) or ""
-            sweet_combined = " | ".join(filter(None, [sweet_val, totals_tip]))
             record = {
                 "日期": str(date.today()), "运动": "足球",
                 "主队": r["h_name"], "客队": r["a_name"],
@@ -473,7 +440,7 @@ with tab2:
                 "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": f"{r['d_ev']:.2f}", "客队期望值": f"{r['a_ev']:.2f}",
                 "主队隐含概率": f"{1/r['h_odds']:.1%}", "平局隐含概率": f"{1/r['d_odds']:.1%}", "客队隐含概率": f"{1/r['a_odds']:.1%}",
                 "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}", "平局优势差距": f"{r['draw_prob'] - 1/r['d_odds']:+.1%}", "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
-                "比赛结果": "", "甜蜜点": sweet_combined
+                "比赛结果": "", "甜蜜点": sweet_val
             }
             save_to_sheet(record)
             st.success("✅ 记录已保存！")
