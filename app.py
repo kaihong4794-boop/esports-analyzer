@@ -7,7 +7,7 @@ import re
 
 SHEET_ID = "1LWzu7jwRan5-WSGhWUxnmwCLJ0iyxhVH07bLojGD-3s"
 SCOPES = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-HEADERS = ["日期","运动","主队","客队","主队加权胜率","平局加权胜率","客队加权胜率","主队期望值","平局期望值","客队期望值","注额(RM)","押注选项","实际结果","盈亏(RM)","比赛结果","甜蜜点"]
+HEADERS = ["日期","运动","主队","客队","主队加权胜率","平局加权胜率","客队加权胜率","主队期望值","平局期望值","客队期望值","主队隐含概率","平局隐含概率","客队隐含概率","主队优势差距","平局优势差距","客队优势差距","比赛结果","甜蜜点"]
 
 # ─── Google Sheets ────────────────────────────────────────────────────────────
 
@@ -146,8 +146,18 @@ def score_to_esports_result(score_str):
 def check_sweet_spot_football(wp, ev):
     if wp >= 50 and -50 <= ev < 0:
         return "🎯🎯 强甜蜜点！WP≥50% + EV -50~0"
-    if wp >= 40 and -50 <= ev < -20:
-        return "🎯 弱甜蜜点！WP≥40% + EV -50~-20"
+    if wp >= 40 and -40 <= ev < -20:
+        return "🎯 弱甜蜜点！WP≥40% + EV -40~-20"
+    return None
+
+def check_football_totals(home_wp, away_wp, home_ev):
+    diff = abs(home_wp - away_wp)
+    if -20 <= home_ev < 0:
+        return "📊 大小盘：押大（EV-20~0，86%大球）"
+    if diff <= 20:
+        return "📊 大小盘：押小（差距≤20%，60%小球）"
+    if 40 <= diff < 60:
+        return "📊 大小盘：押大（差距40-60%，75%大球）"
     return None
 
 def check_sweet_spot_esports_winloss(wp, opp_wp):
@@ -284,30 +294,17 @@ with tab1:
                 st.error("❌ 负期望值")
 
         st.divider()
-        st.subheader("💾 保存记录")
-        col7, col8, col9 = st.columns(3)
-        with col7:
-            e_stake = st.number_input("注额 (RM)", min_value=0, value=0, key="e_stake")
-        with col8:
-            e_bet = st.selectbox("押注队伍", [r["h_name"], r["a_name"]], key="e_bet")
-        with col9:
-            e_res = st.selectbox("实际结果", ["待定", "赢", "输"], key="e_res")
-        if st.button("保存记录", key="e_save"):
-            odds_used = r["h_odds"] if e_bet == r["h_name"] else r["a_odds"]
-            pnl = (odds_used-1)*e_stake if e_res == "赢" else (-e_stake if e_res == "输" else 0)
-            # 计算甜蜜点
-            bet_wp = r['h_wr']*100 if e_bet == r["h_name"] else r['a_wr']*100
-            opp_wp = r['a_wr']*100 if e_bet == r["h_name"] else r['h_wr']*100
-            sweet_val = check_sweet_spot_esports_winloss(bet_wp, opp_wp) or ""
+        if st.button("💾 保存记录", key="e_save"):
+            sweet_val = check_sweet_spot_esports_winloss(r['h_wr']*100, r['a_wr']*100) or ""
             totals_val = check_sweet_spot_esports_totals(r['h_wr']*100, r['a_wr']*100) or ""
             sweet_combined = " | ".join(filter(None, [sweet_val, totals_val]))
             record = {
                 "日期": str(date.today()), "运动": "电竞",
                 "主队": r["h_name"], "客队": r["a_name"],
-                "主队加权胜率": f"{r['h_wr']:.1%}", "客队加权胜率": f"{r['a_wr']:.1%}",
-                "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A",
-                "客队期望值": f"{r['a_ev']:.2f}", "注额(RM)": e_stake,
-                "押注选项": e_bet, "实际结果": e_res, "盈亏(RM)": pnl,
+                "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": "N/A", "客队加权胜率": f"{r['a_wr']:.1%}",
+                "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A", "客队期望值": f"{r['a_ev']:.2f}",
+                "主队隐含概率": f"{1/r['h_odds']:.1%}", "平局隐含概率": "N/A", "客队隐含概率": f"{1/r['a_odds']:.1%}",
+                "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}", "平局优势差距": "N/A", "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
                 "比赛结果": "", "甜蜜点": sweet_combined
             }
             save_to_sheet(record)
@@ -422,6 +419,11 @@ with tab2:
         r = st.session_state["f_result"]
         st.divider()
         col9, col10, col11 = st.columns(3)
+
+        # 大小盘提示（只显示一次）
+        totals_tip = check_football_totals(r['h_wr']*100, r['a_wr']*100, r['h_ev'])
+        if totals_tip:
+            st.info(totals_tip)
         with col9:
             st.subheader(f_home_name)
             st.metric("加权胜率", f"{r['h_wr']:.1%}")
@@ -460,37 +462,18 @@ with tab2:
                 st.error("❌ 负期望值")
 
         st.divider()
-        st.subheader("💾 保存记录")
-        col12, col13, col14 = st.columns(3)
-        with col12:
-            f_stake = st.number_input("注额 (RM)", min_value=0, value=0, key="f_stake")
-        with col13:
-            f_bet = st.selectbox("押注选项", [r["h_name"], "平局", r["a_name"]], key="f_bet")
-        with col14:
-            f_res = st.selectbox("实际结果", ["待定", "主队赢", "平局", "客队赢"], key="f_res")
-        if st.button("保存记录", key="f_save"):
-            if f_bet == r["h_name"]:
-                odds_used = r["h_odds"]; win_condition = "主队赢"
-            elif f_bet == "平局":
-                odds_used = r["d_odds"]; win_condition = "平局"
-            else:
-                odds_used = r["a_odds"]; win_condition = "客队赢"
-            if f_res == "待定": pnl = 0
-            elif f_res == win_condition: pnl = (odds_used-1)*f_stake
-            else: pnl = -f_stake
-            # 计算甜蜜点
-            bet_wp = r['h_wr']*100 if f_bet == r["h_name"] else r['a_wr']*100
-            bet_ev = r['h_ev'] if f_bet == r["h_name"] else r['a_ev']
-            sweet_val = check_sweet_spot_football(bet_wp, bet_ev) or ""
+        if st.button("💾 保存记录", key="f_save"):
+            sweet_val = check_sweet_spot_football(r['h_wr']*100, r['h_ev']) or check_sweet_spot_football(r['a_wr']*100, r['a_ev']) or ""
+            totals_tip = check_football_totals(r['h_wr']*100, r['a_wr']*100, r['h_ev']) or ""
+            sweet_combined = " | ".join(filter(None, [sweet_val, totals_tip]))
             record = {
                 "日期": str(date.today()), "运动": "足球",
                 "主队": r["h_name"], "客队": r["a_name"],
-                "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": f"{r['draw_prob']:.1%}",
-                "客队加权胜率": f"{r['a_wr']:.1%}",
-                "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": f"{r['d_ev']:.2f}",
-                "客队期望值": f"{r['a_ev']:.2f}", "注额(RM)": f_stake,
-                "押注选项": f_bet, "实际结果": f_res, "盈亏(RM)": pnl,
-                "比赛结果": "", "甜蜜点": sweet_val
+                "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": f"{r['draw_prob']:.1%}", "客队加权胜率": f"{r['a_wr']:.1%}",
+                "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": f"{r['d_ev']:.2f}", "客队期望值": f"{r['a_ev']:.2f}",
+                "主队隐含概率": f"{1/r['h_odds']:.1%}", "平局隐含概率": f"{1/r['d_odds']:.1%}", "客队隐含概率": f"{1/r['a_odds']:.1%}",
+                "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}", "平局优势差距": f"{r['draw_prob'] - 1/r['d_odds']:+.1%}", "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
+                "比赛结果": "", "甜蜜点": sweet_combined
             }
             save_to_sheet(record)
             st.success("✅ 记录已保存！")
@@ -567,24 +550,14 @@ with tab3:
             if r['a_ev'] > 0: st.success("✅ 正期望值")
             else: st.error("❌ 负期望值")
         st.divider()
-        st.subheader("💾 保存记录")
-        col7, col8, col9 = st.columns(3)
-        with col7:
-            b_stake = st.number_input("注额 (RM)", min_value=0, value=0, key="b_stake")
-        with col8:
-            b_bet = st.selectbox("押注队伍", [r["h_name"], r["a_name"]], key="b_bet")
-        with col9:
-            b_res = st.selectbox("实际结果", ["待定", "赢", "输"], key="b_res")
-        if st.button("保存记录", key="b_save"):
-            odds_used = r["h_odds"] if b_bet == r["h_name"] else r["a_odds"]
-            pnl = (odds_used-1)*b_stake if b_res == "赢" else (-b_stake if b_res == "输" else 0)
+        if st.button("💾 保存记录", key="b_save"):
             record = {
                 "日期": str(date.today()), "运动": "篮球",
                 "主队": r["h_name"], "客队": r["a_name"],
-                "主队加权胜率": f"{r['h_wr']:.1%}", "客队加权胜率": f"{r['a_wr']:.1%}",
-                "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A",
-                "客队期望值": f"{r['a_ev']:.2f}", "注额(RM)": b_stake,
-                "押注选项": b_bet, "实际结果": b_res, "盈亏(RM)": pnl,
+                "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": "N/A", "客队加权胜率": f"{r['a_wr']:.1%}",
+                "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A", "客队期望值": f"{r['a_ev']:.2f}",
+                "主队隐含概率": f"{1/r['h_odds']:.1%}", "平局隐含概率": "N/A", "客队隐含概率": f"{1/r['a_odds']:.1%}",
+                "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}", "平局优势差距": "N/A", "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
                 "比赛结果": "", "甜蜜点": ""
             }
             save_to_sheet(record)
@@ -601,39 +574,10 @@ with tab4:
     if df.empty:
         st.info("还没有记录！")
     else:
-        known = df[df["实际结果"] != "待定"]
-        total = len(df)
-        pending = len(df[df["实际结果"] == "待定"])
-        total_pnl = pd.to_numeric(known["盈亏(RM)"], errors="coerce").sum()
-        col1, col2, col3, col4 = st.columns(4)
-        with col1: st.metric("总记录", total)
-        with col2: st.metric("已结算", len(known))
-        with col3: st.metric("待定", pending)
-        with col4: st.metric("总盈亏", f"RM{total_pnl:.2f}")
+        col1, col2 = st.columns(2)
+        with col1: st.metric("总记录", len(df))
+        with col2: st.metric("今日记录", len(df[df["日期"] == str(date.today())]))
         st.divider()
         st.dataframe(df, use_container_width=True)
-        pending_df = df[df["实际结果"] == "待定"]
-        if len(pending_df) > 0:
-            st.divider()
-            st.subheader("✏️ 更新待定记录")
-            options = [f"{row['日期']} | {row['主队']} vs {row['客队']}" for _, row in pending_df.iterrows()]
-            selected = st.selectbox("选择比赛", options, key="edit_select")
-            new_result = st.selectbox("实际结果", ["主队赢", "平局", "客队赢", "赢", "输"], key="edit_result")
-            if st.button("更新结果", key="edit_save"):
-                idx = options.index(selected)
-                actual_idx = pending_df.index[idx]
-                row = df.iloc[actual_idx]
-                stake = float(row["注额(RM)"])
-                bet = row["押注选项"]
-                if new_result in ["赢", "主队赢"] and bet == row["主队"]:
-                    pnl = (float(str(row["主队期望值"]).replace("%","")) - 1 + 1) * stake
-                elif new_result == "平局" and bet == "平局":
-                    pnl = (float(str(row["平局期望值"]).replace("%","")) - 1 + 1) * stake
-                elif new_result in ["客队赢"] and bet == row["客队"]:
-                    pnl = (float(str(row["客队期望值"]).replace("%","")) - 1 + 1) * stake
-                else:
-                    pnl = -stake
-                update_sheet_row(actual_idx, new_result, pnl)
-                st.success("✅ 已更新！按刷新查看")
         csv = df.to_csv(index=False).encode("utf-8")
         st.download_button("📥 下载记录", csv, "records.csv", "text/csv")
