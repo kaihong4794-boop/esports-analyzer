@@ -64,6 +64,8 @@ score_weights_esports = {
     # BO1
     "1-0 赢": 0.85,
     "0-1 输": 0.2,
+    # BO2
+    "1-1 平": 0.5,
     # BO3
     "2-0 赢": 1.0,
     "2-1 赢": 0.7,
@@ -94,6 +96,7 @@ result_emoji_football = {
 result_emoji_esports = {
     "1-0 赢": "🏆 BO1 赢",
     "0-1 输": "💀 BO1 输",
+    "1-1 平": "➖ BO2 平局",
     "2-0 赢": "🏆 2-0 大胜",
     "2-1 赢": "✅ 2-1 小胜",
     "1-2 输": "❌ 1-2 小负",
@@ -130,7 +133,7 @@ def score_to_football_result(score_str, is_home):
         return f"{venue}大负" if diff >= 3 else f"{venue}小负"
 
 def score_to_esports_result(score_str):
-    """比分 → esports key，支持 BO1/BO3/BO5"""
+    """比分 → esports key，支持 BO1/BO2/BO3/BO5"""
     score_str = score_str.strip()
     if not re.match(r'^\d+-\d+$', score_str):
         return None
@@ -138,7 +141,12 @@ def score_to_esports_result(score_str):
         a, b = map(int, score_str.split('-'))
     except:
         return None
-    key = f"{a}-{b} {'赢' if a > b else ('输' if a < b else None)}"
+    if a == b:
+        key = f"{a}-{b} 平"
+    elif a > b:
+        key = f"{a}-{b} 赢"
+    else:
+        key = f"{a}-{b} 输"
     return key if key in score_weights_esports else None
 
 # ─── 甜蜜点检查 ───────────────────────────────────────────────────────────────
@@ -220,7 +228,7 @@ with tab1:
             for i, v in enumerate(vars):
                 base = 1.0 - (i * 0.1)
                 total_w += base
-                win_w += (1 if "赢" in v else 0) * weights[v] * base
+                win_w += (1 if "赢" in v else (0.5 if "平" in v else 0)) * weights[v] * base
             return win_w / total_w if total_w > 0 else 0
         h_wr = e_winrate(e_home_vars, score_weights_esports)
         a_wr = e_winrate(e_away_vars, score_weights_esports)
