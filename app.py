@@ -7,16 +7,9 @@ import re
 
 SHEET_ID = "1LWzu7jwRan5-WSGhWUxnmwCLJ0iyxhVH07bLojGD-3s"
 SCOPES = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-HEADERS = [
-    "日期","运动","主队","客队",
-    "主队加权胜率","平局加权胜率","客队加权胜率",
-    "主队期望值","平局期望值","客队期望值",
-    "主队隐含概率","平局隐含概率","客队隐含概率",
-    "主队优势差距","平局优势差距","客队优势差距",
-    "押注类型","实际赔率","比赛结果","盈亏(RM)","甜蜜点"
-]
+HEADERS = ["日期","运动","主队","客队","主队加权胜率","平局加权胜率","客队加权胜率","主队期望值","平局期望值","客队期望值","主队隐含概率","平局隐含概率","客队隐含概率","主队优势差距","平局优势差距","客队优势差距","比赛结果","甜蜜点"]
 
-# ─── Google Sheets ─────────────────────────────────────────────────────────────
+# ─── Google Sheets ────────────────────────────────────────────────────────────
 
 def get_sheet():
     import json
@@ -42,7 +35,15 @@ def load_from_sheet():
     except:
         return pd.DataFrame(columns=HEADERS)
 
-# ─── Football Results Config ───────────────────────────────────────────────────
+def update_sheet_row(row_idx, result, pnl):
+    try:
+        sheet = get_sheet()
+        sheet.update_cell(row_idx + 2, HEADERS.index("实际结果") + 1, result)
+        sheet.update_cell(row_idx + 2, HEADERS.index("盈亏(RM)") + 1, pnl)
+    except Exception as e:
+        st.error(f"更新失败: {e}")
+
+# ─── Football Results Config ──────────────────────────────────────────────────
 
 football_results = {
     "🏠 主场大胜": {"weight": 1.0,  "is_win": 1, "is_draw": 0, "is_home": True},
@@ -58,10 +59,10 @@ football_results = {
 }
 
 score_weights_esports = {
-    "1-0 赢": 0.85, "0-1 输": 0.2, "1-1 平": 0.5,
-    "2-0 赢": 1.0,  "2-1 赢": 0.7, "1-2 输": 0.4, "0-2 输": 0.2,
-    "3-0 赢": 1.0,  "3-1 赢": 0.75,"3-2 赢": 0.6,
-    "2-3 输": 0.4,  "1-3 输": 0.3, "0-3 输": 0.2,
+    "1-0 赢": 0.85, "0-1 输": 0.2,  "1-1 平": 0.5,
+    "2-0 赢": 1.0,  "2-1 赢": 0.7,  "1-2 输": 0.4, "0-2 输": 0.2,
+    "3-0 赢": 1.0,  "3-1 赢": 0.75, "3-2 赢": 0.6,
+    "2-3 输": 0.4,  "1-3 输": 0.3,  "0-3 输": 0.2,
 }
 
 result_emoji_football = {
@@ -80,7 +81,7 @@ result_emoji_esports = {
     "0-3 输": "💀 0-3 大负",
 }
 
-# ─── 比分转换 ──────────────────────────────────────────────────────────────────
+# ─── 比分转换函数 ─────────────────────────────────────────────────────────────
 
 def score_to_football_result(score_str, is_home):
     score_str = score_str.strip()
@@ -109,10 +110,15 @@ def score_to_esports_result(score_str):
         a, b = map(int, score_str.split('-'))
     except:
         return None
-    key = f"{a}-{b} {'平' if a==b else ('赢' if a>b else '输')}"
+    if a == b:
+        key = f"{a}-{b} 平"
+    elif a > b:
+        key = f"{a}-{b} 赢"
+    else:
+        key = f"{a}-{b} 输"
     return key if key in score_weights_esports else None
 
-# ─── 甜蜜点 ────────────────────────────────────────────────────────────────────
+# ─── 甜蜜点检查 ───────────────────────────────────────────────────────────────
 
 def check_sweet_spot_football(wp, ev):
     spots = []
@@ -133,22 +139,20 @@ def check_sweet_spot_over(h_wp, a_wp):
 def check_sweet_spot_esports(wp, ev, opp_wp):
     spots = []
     diff = abs(wp - opp_wp)
-    # 主要信号：WP≥60% + EV -50~60（历史胜率77.4%）
     if wp >= 60 and -50 <= ev <= 60:
-        spots.append(f"🎯 甜蜜点！WP≥60% + EV -50~60（历史77.4%）")
-    # 势均力敌警告
+        spots.append("🎯 甜蜜点！WP≥60% + EV -50~60（历史77.4%）")
     if diff < 10:
         spots.append("⚠️ 势均力敌，胜负不建议押")
     return spots
 
-# ─── App ───────────────────────────────────────────────────────────────────────
+# ─── App ──────────────────────────────────────────────────────────────────────
 
 st.title("运动期望值分析器 🏆")
 
 tab1, tab2, tab3, tab4 = st.tabs(["⚔️ 电竞", "⚽ 足球", "🏀 篮球", "📋 记录"])
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 1 — 电竞
+# TAB 1: 电竞
 # ══════════════════════════════════════════════════════════════════════════════
 with tab1:
     st.header("电竞期望值分析器")
@@ -222,9 +226,7 @@ with tab1:
             st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}")
             st.metric("期望值 (EV)", f"RM{r['h_ev']:.2f}")
             st.metric("隐含概率", f"{1/r['h_odds']:.1%}")
-            # 优势差距降级为参考
-            gap_h = r['h_wr'] - 1/r['h_odds']
-            st.metric("优势差距 ⚠️仅参考", f"{gap_h:+.1%}")
+            st.metric("优势差距 ⚠️仅参考", f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
             spots = check_sweet_spot_esports(r['h_wr']*100, r['h_ev'], r['a_wr']*100)
             for s in spots:
                 if "⚠️" in s: st.warning(s)
@@ -238,8 +240,7 @@ with tab1:
             st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}")
             st.metric("期望值 (EV)", f"RM{r['a_ev']:.2f}")
             st.metric("隐含概率", f"{1/r['a_odds']:.1%}")
-            gap_a = r['a_wr'] - 1/r['a_odds']
-            st.metric("优势差距 ⚠️仅参考", f"{gap_a:+.1%}")
+            st.metric("优势差距 ⚠️仅参考", f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
             spots = check_sweet_spot_esports(r['a_wr']*100, r['a_ev'], r['h_wr']*100)
             for s in spots:
                 if "⚠️" in s: st.warning(s)
@@ -249,18 +250,7 @@ with tab1:
                 else: st.error("❌ 负期望值")
 
         st.divider()
-        st.subheader("💾 保存记录")
-        col_s1, col_s2, col_s3 = st.columns(3)
-        with col_s1:
-            bet_type = st.selectbox("押注类型", [
-                "全场独赢", "全场+Map3组合", "单押Map3", "BO1独赢", "其他"
-            ], key="e_bet_type")
-        with col_s2:
-            actual_odds = st.number_input("实际赔率", min_value=1.01, value=1.70, step=0.01, key="e_actual_odds")
-        with col_s3:
-            pnl = st.number_input("盈亏 (RM)", value=0.0, step=1.0, key="e_pnl")
-
-        if st.button("💾 保存", key="e_save"):
+        if st.button("💾 保存记录", key="e_save"):
             all_spots = (
                 check_sweet_spot_esports(r['h_wr']*100, r['h_ev'], r['a_wr']*100) +
                 check_sweet_spot_esports(r['a_wr']*100, r['a_ev'], r['h_wr']*100)
@@ -272,15 +262,14 @@ with tab1:
                 "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": "N/A", "客队加权胜率": f"{r['a_wr']:.1%}",
                 "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A", "客队期望值": f"{r['a_ev']:.2f}",
                 "主队隐含概率": f"{1/r['h_odds']:.1%}", "平局隐含概率": "N/A", "客队隐含概率": f"{1/r['a_odds']:.1%}",
-                "主队优势差距": f"{r['h_wr']-1/r['h_odds']:+.1%}", "平局优势差距": "N/A", "客队优势差距": f"{r['a_wr']-1/r['a_odds']:+.1%}",
-                "押注类型": bet_type, "实际赔率": actual_odds,
-                "比赛结果": "", "盈亏(RM)": pnl, "甜蜜点": sweet_combined
+                "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}", "平局优势差距": "N/A", "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
+                "比赛结果": "", "甜蜜点": sweet_combined
             }
             save_to_sheet(record)
             st.success("✅ 记录已保存！")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 2 — 足球
+# TAB 2: 足球
 # ══════════════════════════════════════════════════════════════════════════════
 with tab2:
     st.header("足球期望值分析器")
@@ -291,7 +280,7 @@ with tab2:
     with col2:
         f_away_name = st.text_input("客队名字", "客队", key="f_away_name")
 
-    col3, col4, col5, col6 = st.columns(4)
+    col3, col4, col5, col6 = st.columns([2, 2, 2, 2])
     with col3: f_home_odds = st.number_input("主队赔率", min_value=1.01, value=2.0, step=0.01, key="f_home_odds")
     with col4: f_draw_odds = st.number_input("平局赔率", min_value=1.01, value=3.0, step=0.01, key="f_draw_odds")
     with col5: f_away_odds = st.number_input("客队赔率", min_value=1.01, value=3.5, step=0.01, key="f_away_odds")
@@ -321,7 +310,7 @@ with tab2:
         return win_rate, draw_rate
 
     st.subheader("近期比赛记录")
-    st.caption("填实际比分（主队-客队）+ 选主/客场 | 大胜/大负 = 差距≥3球")
+    st.caption("填实际比分（主队得分-客队得分）+ 选该队是主场还是客场 | 大胜/大负 = 差距≥3球")
 
     valid_keys = list(football_results.keys())
     col_h2, col_a2 = st.columns(2)
@@ -332,14 +321,14 @@ with tab2:
         for i in range(num_matches_f):
             label = "最新" if i == 0 else f"第{i+1}场"
             c1, c2 = st.columns([2, 1])
-            with c1: score_input = st.text_input(label, value="", placeholder="如 2-1", key=f"fh_score_{i}")
-            with c2: venue_sel  = st.selectbox("", ["主场🏠","客场✈️"], key=f"fh_venue_{i}", label_visibility="collapsed")
+            with c1: score_input = st.text_input(label, value="", placeholder="主队-客队 如 2-1", key=f"fh_score_{i}")
+            with c2: venue_sel  = st.selectbox("", ["主场🏠", "客场✈️"], key=f"fh_venue_{i}", label_visibility="collapsed")
             result = score_to_football_result(score_input, "主场" in venue_sel)
             if result and result in valid_keys:
                 st.caption(f"→ {result_emoji_football.get(result, result)}")
                 f_home_vars.append(result)
             else:
-                if score_input: st.caption("⚠️ 格式错误")
+                if score_input: st.caption("⚠️ 格式错误，请填如 2-1")
                 f_home_vars.append("🏠 主场小胜")
 
     with col_a2:
@@ -347,14 +336,14 @@ with tab2:
         for i in range(num_matches_f):
             label = "最新" if i == 0 else f"第{i+1}场"
             c1, c2 = st.columns([2, 1])
-            with c1: score_input = st.text_input(label, value="", placeholder="如 2-1", key=f"fa_score_{i}")
-            with c2: venue_sel  = st.selectbox("", ["主场🏠","客场✈️"], index=1, key=f"fa_venue_{i}", label_visibility="collapsed")
+            with c1: score_input = st.text_input(label, value="", placeholder="主队-客队 如 2-1", key=f"fa_score_{i}")
+            with c2: venue_sel  = st.selectbox("", ["主场🏠", "客场✈️"], index=1, key=f"fa_venue_{i}", label_visibility="collapsed")
             result = score_to_football_result(score_input, "主场" in venue_sel)
             if result and result in valid_keys:
                 st.caption(f"→ {result_emoji_football.get(result, result)}")
                 f_away_vars.append(result)
             else:
-                if score_input: st.caption("⚠️ 格式错误")
+                if score_input: st.caption("⚠️ 格式错误，请填如 2-1")
                 f_away_vars.append("✈️ 客场小胜")
 
     if st.button("⚡ 计算", key="f_calc", type="primary"):
@@ -375,7 +364,6 @@ with tab2:
         r = st.session_state["f_result"]
         st.divider()
 
-        # Over 2.5
         over_sweet = check_sweet_spot_over(r['h_wr']*100, r['a_wr']*100)
         if over_sweet:
             st.success(over_sweet)
@@ -386,7 +374,7 @@ with tab2:
             st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}")
             st.metric("期望值 (EV)", f"RM{r['h_ev']:.2f}")
             st.metric("隐含概率", f"{1/r['h_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['h_wr']-1/r['h_odds']:+.1%}")
+            st.metric("优势差距 ⚠️仅参考", f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
             sweet = check_sweet_spot_football(r['h_wr']*100, r['h_ev'])
             if sweet: st.success(sweet)
             elif r['h_ev'] > 0: st.success("✅ 正期望值")
@@ -397,7 +385,7 @@ with tab2:
             st.metric("平局概率", f"{r['draw_prob']:.1%}")
             st.metric("期望值 (EV)", f"RM{r['d_ev']:.2f}")
             st.metric("隐含概率", f"{1/r['d_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['draw_prob']-1/r['d_odds']:+.1%}")
+            st.metric("优势差距 ⚠️仅参考", f"{r['draw_prob'] - 1/r['d_odds']:+.1%}")
             if r['d_ev'] > 0: st.success("✅ 正期望值")
             else: st.error("❌ 负期望值")
 
@@ -406,25 +394,14 @@ with tab2:
             st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}")
             st.metric("期望值 (EV)", f"RM{r['a_ev']:.2f}")
             st.metric("隐含概率", f"{1/r['a_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['a_wr']-1/r['a_odds']:+.1%}")
+            st.metric("优势差距 ⚠️仅参考", f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
             sweet = check_sweet_spot_football(r['a_wr']*100, r['a_ev'])
             if sweet: st.success(sweet)
             elif r['a_ev'] > 0: st.success("✅ 正期望值")
             else: st.error("❌ 负期望值")
 
         st.divider()
-        st.subheader("💾 保存记录")
-        col_s1, col_s2, col_s3 = st.columns(3)
-        with col_s1:
-            bet_type_f = st.selectbox("押注类型", [
-                "主队独赢", "客队独赢", "平局", "Over 2.5", "Under 2.5", "其他"
-            ], key="f_bet_type")
-        with col_s2:
-            actual_odds_f = st.number_input("实际赔率", min_value=1.01, value=1.90, step=0.01, key="f_actual_odds")
-        with col_s3:
-            pnl_f = st.number_input("盈亏 (RM)", value=0.0, step=1.0, key="f_pnl")
-
-        if st.button("💾 保存", key="f_save"):
+        if st.button("💾 保存记录", key="f_save"):
             over_val = check_sweet_spot_over(r['h_wr']*100, r['a_wr']*100) or ""
             win_val  = check_sweet_spot_football(r['h_wr']*100, r['h_ev']) or check_sweet_spot_football(r['a_wr']*100, r['a_ev']) or ""
             sweet_val = " | ".join(filter(None, [win_val, over_val]))
@@ -434,15 +411,14 @@ with tab2:
                 "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": f"{r['draw_prob']:.1%}", "客队加权胜率": f"{r['a_wr']:.1%}",
                 "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": f"{r['d_ev']:.2f}", "客队期望值": f"{r['a_ev']:.2f}",
                 "主队隐含概率": f"{1/r['h_odds']:.1%}", "平局隐含概率": f"{1/r['d_odds']:.1%}", "客队隐含概率": f"{1/r['a_odds']:.1%}",
-                "主队优势差距": f"{r['h_wr']-1/r['h_odds']:+.1%}", "平局优势差距": f"{r['draw_prob']-1/r['d_odds']:+.1%}", "客队优势差距": f"{r['a_wr']-1/r['a_odds']:+.1%}",
-                "押注类型": bet_type_f, "实际赔率": actual_odds_f,
-                "比赛结果": "", "盈亏(RM)": pnl_f, "甜蜜点": sweet_val
+                "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}", "平局优势差距": f"{r['draw_prob'] - 1/r['d_odds']:+.1%}", "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
+                "比赛结果": "", "甜蜜点": sweet_val
             }
             save_to_sheet(record)
             st.success("✅ 记录已保存！")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 3 — 篮球
+# TAB 3: 篮球
 # ══════════════════════════════════════════════════════════════════════════════
 with tab3:
     st.header("篮球期望值分析器")
@@ -500,7 +476,7 @@ with tab3:
             st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}")
             st.metric("期望值 (EV)", f"RM{r['h_ev']:.2f}")
             st.metric("隐含概率", f"{1/r['h_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['h_wr']-1/r['h_odds']:+.1%}")
+            st.metric("优势差距 ⚠️仅参考", f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
             if r['h_ev'] > 0: st.success("✅ 正期望值")
             else: st.error("❌ 负期望值")
         with col6:
@@ -508,34 +484,25 @@ with tab3:
             st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}")
             st.metric("期望值 (EV)", f"RM{r['a_ev']:.2f}")
             st.metric("隐含概率", f"{1/r['a_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['a_wr']-1/r['a_odds']:+.1%}")
+            st.metric("优势差距 ⚠️仅参考", f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
             if r['a_ev'] > 0: st.success("✅ 正期望值")
             else: st.error("❌ 负期望值")
         st.divider()
-        st.subheader("💾 保存记录")
-        col_s1, col_s2, col_s3 = st.columns(3)
-        with col_s1:
-            bet_type_b = st.selectbox("押注类型", ["主队独赢","客队独赢","让分","其他"], key="b_bet_type")
-        with col_s2:
-            actual_odds_b = st.number_input("实际赔率", min_value=1.01, value=1.90, step=0.01, key="b_actual_odds")
-        with col_s3:
-            pnl_b = st.number_input("盈亏 (RM)", value=0.0, step=1.0, key="b_pnl")
-        if st.button("💾 保存", key="b_save"):
+        if st.button("💾 保存记录", key="b_save"):
             record = {
                 "日期": str(date.today()), "运动": "篮球",
                 "主队": r["h_name"], "客队": r["a_name"],
                 "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": "N/A", "客队加权胜率": f"{r['a_wr']:.1%}",
                 "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A", "客队期望值": f"{r['a_ev']:.2f}",
                 "主队隐含概率": f"{1/r['h_odds']:.1%}", "平局隐含概率": "N/A", "客队隐含概率": f"{1/r['a_odds']:.1%}",
-                "主队优势差距": f"{r['h_wr']-1/r['h_odds']:+.1%}", "平局优势差距": "N/A", "客队优势差距": f"{r['a_wr']-1/r['a_odds']:+.1%}",
-                "押注类型": bet_type_b, "实际赔率": actual_odds_b,
-                "比赛结果": "", "盈亏(RM)": pnl_b, "甜蜜点": ""
+                "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}", "平局优势差距": "N/A", "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
+                "比赛结果": "", "甜蜜点": ""
             }
             save_to_sheet(record)
             st.success("✅ 记录已保存！")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 4 — 记录
+# TAB 4: 记录
 # ══════════════════════════════════════════════════════════════════════════════
 with tab4:
     st.header("📋 历史记录")
@@ -545,15 +512,9 @@ with tab4:
     if df.empty:
         st.info("还没有记录！")
     else:
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         with col1: st.metric("总记录", len(df))
         with col2: st.metric("今日记录", len(df[df["日期"] == str(date.today())]))
-        if "盈亏(RM)" in df.columns:
-            try:
-                total_pnl = pd.to_numeric(df["盈亏(RM)"], errors="coerce").sum()
-                with col3: st.metric("总盈亏", f"RM{total_pnl:.2f}", delta=f"{'📈' if total_pnl>=0 else '📉'}")
-            except:
-                pass
         st.divider()
         st.dataframe(df, use_container_width=True)
         csv = df.to_csv(index=False).encode("utf-8")
