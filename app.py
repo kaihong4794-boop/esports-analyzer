@@ -124,8 +124,8 @@ def check_sweet_spot_football(wp, ev):
     spots = []
     if wp >= 40 and -40 <= ev < -20:
         spots.append("🎯 弱甜蜜点！WP≥40% + EV -40~-20")
-    if -70 <= ev <= -19:
-        spots.append("🎯 新甜蜜点！EV -19~-70")
+    if -61 <= ev <= -19:
+        spots.append("🎯 新甜蜜点！EV -19~-61")
     return " | ".join(spots) if spots else None
 
 def check_sweet_spot_over(h_wp, a_wp):
@@ -136,8 +136,8 @@ def check_sweet_spot_over(h_wp, a_wp):
 
 def check_sweet_spot_esports(wp, ev, opp_wp):
     spots = []
-    if -70 <= ev <= -19:
-        spots.append("🎯 新甜蜜点！EV -19~-70")
+    if -61 <= ev <= -19:
+        spots.append("🎯 新甜蜜点！EV -19~-61")
     return spots
 
 # ─── App ──────────────────────────────────────────────────────────────────────
