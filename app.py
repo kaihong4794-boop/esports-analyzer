@@ -124,25 +124,20 @@ def check_sweet_spot_football(wp, ev):
     spots = []
     if wp >= 40 and -40 <= ev < -20:
         spots.append("🎯 弱甜蜜点！WP≥40% + EV -40~-20")
-    if 20 <= ev <= 60:
-        spots.append("🎯 新规律！EV 20~60（历史胜率59%）")
+    if -70 <= ev <= -19:
+        spots.append("🎯 新甜蜜点！EV -19~-70")
     return " | ".join(spots) if spots else None
 
 def check_sweet_spot_over(h_wp, a_wp):
     total_wp = h_wp + a_wp
     if total_wp >= 90:
         return f"⚽ Over 2.5！主+客WP={total_wp:.1f}%≥90%（历史72.7%）"
-    if total_wp >= 80:
-        return f"⚽ Over 2.5！主+客WP={total_wp:.1f}%≥80%（历史70.2%）"
     return None
 
 def check_sweet_spot_esports(wp, ev, opp_wp):
     spots = []
-    diff = abs(wp - opp_wp)
-    if wp >= 60 and -50 <= ev <= 60:
-        spots.append("🎯 甜蜜点！WP≥60% + EV -50~60（历史77.4%）")
-    if diff < 10:
-        spots.append("⚠️ 势均力敌，胜负不建议押")
+    if -70 <= ev <= -19:
+        spots.append("🎯 新甜蜜点！EV -19~-70")
     return spots
 
 # ─── App ──────────────────────────────────────────────────────────────────────
@@ -229,8 +224,7 @@ with tab1:
             st.metric("优势差距 ⚠️仅参考", f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
             spots = check_sweet_spot_esports(r['h_wr']*100, r['h_ev'], r['a_wr']*100)
             for s in spots:
-                if "⚠️" in s: st.warning(s)
-                else: st.success(s)
+                st.success(s)
             if not spots:
                 if r['h_ev'] > 0: st.success("✅ 正期望值")
                 else: st.error("❌ 负期望值")
@@ -243,8 +237,7 @@ with tab1:
             st.metric("优势差距 ⚠️仅参考", f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
             spots = check_sweet_spot_esports(r['a_wr']*100, r['a_ev'], r['h_wr']*100)
             for s in spots:
-                if "⚠️" in s: st.warning(s)
-                else: st.success(s)
+                st.success(s)
             if not spots:
                 if r['a_ev'] > 0: st.success("✅ 正期望值")
                 else: st.error("❌ 负期望值")
