@@ -169,16 +169,21 @@ def calc_sweet_spot_stats(df):
             except:
                 bet_amt = 0.0
 
-            if bet_result == "✅ 赢":
+            # 兼容有emoji和无emoji两种格式
+            is_win    = bet_result in ["✅ 赢", "赢"]
+            is_loss   = bet_result in ["❌ 输", "输"]
+            is_refund = bet_result in ["↩️ 退水", "退水"]
+
+            if is_win:
                 wins += 1
                 if bet_amt > 0 and odds > 0:
                     total_bet    += bet_amt
                     total_return += bet_amt * odds
-            elif bet_result == "❌ 输":
+            elif is_loss:
                 losses += 1
                 if bet_amt > 0:
                     total_bet += bet_amt
-            elif bet_result == "↩️ 退水":
+            elif is_refund:
                 refunds += 1
                 if bet_amt > 0:
                     total_bet    += bet_amt
