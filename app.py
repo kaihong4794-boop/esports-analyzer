@@ -7,7 +7,7 @@ import re
 
 SHEET_ID = "1LWzu7jwRan5-WSGhWUxnmwCLJ0iyxhVH07bLojGD-3s"
 SCOPES = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-HEADERS = ["日期","运动","主队","客队","主队加权胜率","平局加权胜率","客队加权胜率","主队期望值","平局期望值","客队期望值","主队隐含概率","平局隐含概率","客队隐含概率","主队优势差距","平局优势差距","客队优势差距","比赛结果","甜蜜点","投注结果","赔率","投注金额"]
+HEADERS = ["日期","运动","主队","客队","主队加权胜率","平局加权胜率","客队加权胜率","主队期望值","平局期望值","客队期望值","主队隐含概率","平局隐含概率","客队隐含概率","主队优势差距","平局优势差距","客队优势差距","比赛结果","甜蜜点","投注结果"]
 
 # ─── Google Sheets ────────────────────────────────────────────────────────────
 
@@ -139,9 +139,8 @@ def calc_sweet_spot_stats(df):
     if sweet_df.empty:
         return None
 
-    for col in ["投注结果", "赔率", "投注金额"]:
-        if col not in sweet_df.columns:
-            sweet_df[col] = ""
+    if "投注结果" not in sweet_df.columns:
+        sweet_df["投注结果"] = ""
 
     results = []
     spot_types = ["🎯 弱甜蜜点", "🎯 新甜蜜点", "⚽ Over 2.5"]
@@ -151,48 +150,20 @@ def calc_sweet_spot_stats(df):
         if subset.empty:
             continue
 
-        total        = len(subset)
-        wins         = 0
-        losses       = 0
-        refunds      = 0
-        total_bet    = 0.0
-        total_return = 0.0
+        total = len(subset)
+        wins = losses = refunds = 0
 
         for _, row in subset.iterrows():
             bet_result = str(row.get("投注结果", "")).strip()
-            try:
-                odds = float(str(row.get("赔率", "")).strip()) if str(row.get("赔率", "")).strip() else 0.0
-            except:
-                odds = 0.0
-            try:
-                bet_amt = float(str(row.get("投注金额", "")).strip()) if str(row.get("投注金额", "")).strip() else 0.0
-            except:
-                bet_amt = 0.0
-
-            # 兼容有emoji和无emoji两种格式
             is_win    = bet_result in ["✅ 赢", "赢"]
             is_loss   = bet_result in ["❌ 输", "输"]
             is_refund = bet_result in ["↩️ 退水", "退水"]
-
-            if is_win:
-                wins += 1
-                if bet_amt > 0 and odds > 0:
-                    total_bet    += bet_amt
-                    total_return += bet_amt * odds
-            elif is_loss:
-                losses += 1
-                if bet_amt > 0:
-                    total_bet += bet_amt
-            elif is_refund:
-                refunds += 1
-                if bet_amt > 0:
-                    total_bet    += bet_amt
-                    total_return += bet_amt  # 退回本金
+            if is_win:    wins += 1
+            elif is_loss: losses += 1
+            elif is_refund: refunds += 1
 
         settled  = wins + losses + refunds
         win_rate = (wins / (wins + losses) * 100) if (wins + losses) > 0 else None
-        net_pnl  = (total_return - total_bet) if total_bet > 0 else None
-        roi      = (net_pnl / total_bet * 100) if total_bet > 0 else None
 
         results.append({
             "甜蜜点类型": spot,
@@ -202,9 +173,6 @@ def calc_sweet_spot_stats(df):
             "输":       losses,
             "退水":     refunds,
             "命中率":   f"{win_rate:.1f}%" if win_rate is not None else "—",
-            "总投注":   f"RM{total_bet:.0f}" if total_bet > 0 else "—",
-            "净盈亏":   f"RM{net_pnl:+.0f}" if net_pnl is not None else "—",
-            "ROI":      f"{roi:+.1f}%" if roi is not None else "—",
         })
 
     return results
@@ -311,13 +279,7 @@ with tab1:
 
         st.divider()
         st.subheader("💾 保存记录")
-        col_s1, col_s2, col_s3 = st.columns(3)
-        with col_s1:
-            e_bet_result = st.selectbox("投注结果", ["", "✅ 赢", "❌ 输", "↩️ 退水"], key="e_bet_result")
-        with col_s2:
-            e_bet_odds = st.number_input("实际赔率", min_value=1.01, value=1.64, step=0.01, key="e_bet_odds")
-        with col_s3:
-            e_bet_amt = st.number_input("投注金额 (RM)", min_value=0.0, value=100.0, step=10.0, key="e_bet_amt")
+        e_bet_result = st.selectbox("投注结果", ["", "✅ 赢", "❌ 输", "↩️ 退水"], key="e_bet_result")
 
         if st.button("💾 保存记录", key="e_save"):
             all_spots = (
@@ -332,8 +294,7 @@ with tab1:
                 "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A", "客队期望值": f"{r['a_ev']:.2f}",
                 "主队隐含概率": f"{1/r['h_odds']:.1%}", "平局隐含概率": "N/A", "客队隐含概率": f"{1/r['a_odds']:.1%}",
                 "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}", "平局优势差距": "N/A", "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
-                "比赛结果": "", "甜蜜点": sweet_combined,
-                "投注结果": e_bet_result, "赔率": e_bet_odds, "投注金额": e_bet_amt
+                "比赛结果": "", "甜蜜点": sweet_combined, "投注结果": e_bet_result
             }
             save_to_sheet(record)
             st.success("✅ 记录已保存！")
@@ -472,13 +433,7 @@ with tab2:
 
         st.divider()
         st.subheader("💾 保存记录")
-        col_s1, col_s2, col_s3 = st.columns(3)
-        with col_s1:
-            f_bet_result = st.selectbox("投注结果", ["", "✅ 赢", "❌ 输", "↩️ 退水"], key="f_bet_result")
-        with col_s2:
-            f_bet_odds = st.number_input("实际赔率", min_value=1.01, value=1.64, step=0.01, key="f_bet_odds")
-        with col_s3:
-            f_bet_amt = st.number_input("投注金额 (RM)", min_value=0.0, value=100.0, step=10.0, key="f_bet_amt")
+        f_bet_result = st.selectbox("投注结果", ["", "✅ 赢", "❌ 输", "↩️ 退水"], key="f_bet_result")
 
         if st.button("💾 保存记录", key="f_save"):
             over_val = check_sweet_spot_over(r['h_wr']*100, r['a_wr']*100) or ""
@@ -491,8 +446,7 @@ with tab2:
                 "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": f"{r['d_ev']:.2f}", "客队期望值": f"{r['a_ev']:.2f}",
                 "主队隐含概率": f"{1/r['h_odds']:.1%}", "平局隐含概率": f"{1/r['d_odds']:.1%}", "客队隐含概率": f"{1/r['a_odds']:.1%}",
                 "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}", "平局优势差距": f"{r['draw_prob'] - 1/r['d_odds']:+.1%}", "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
-                "比赛结果": "", "甜蜜点": sweet_val,
-                "投注结果": f_bet_result, "赔率": f_bet_odds, "投注金额": f_bet_amt
+                "比赛结果": "", "甜蜜点": sweet_val, "投注结果": f_bet_result
             }
             save_to_sheet(record)
             st.success("✅ 记录已保存！")
@@ -608,14 +562,10 @@ with tab4:
                 with st.expander(f"{s['甜蜜点类型']}　　命中率 {s['命中率']}　已结算 {s['已结算']}/{s['总记录']}"):
                     c1, c2, c3, c4, c5 = st.columns(5)
                     c1.metric("总记录", s["总记录"])
-                    c2.metric("赢", s["赢"])
-                    c3.metric("输", s["输"])
-                    c4.metric("退水", s["退水"])
+                    c2.metric("已结算", s["已结算"])
+                    c3.metric("赢", s["赢"])
+                    c4.metric("输", s["输"])
                     c5.metric("命中率", s["命中率"])
-                    c6, c7, c8 = st.columns(3)
-                    c6.metric("总投注", s["总投注"])
-                    c7.metric("净盈亏", s["净盈亏"])
-                    c8.metric("ROI", s["ROI"])
         else:
             st.info("还没有甜蜜点记录，或甜蜜点栏位为空。")
 
