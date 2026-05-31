@@ -107,11 +107,11 @@ def check_football_spots(h_wp, a_wp, h_ev, a_ev):
     spots = []
     if h_wp >= 40 and -40 <= h_ev <= -20:
         spots.append("F1主")
+    elif h_wp >= 30 and -40 <= h_ev <= -20:
+        spots.append("F2主")
     if a_wp >= 40 and -40 <= a_ev <= -20:
         spots.append("F1客")
-    if h_wp >= 30 and -40 <= h_ev <= -20:
-        spots.append("F2主")
-    if a_wp >= 30 and -40 <= a_ev <= -20:
+    elif a_wp >= 30 and -40 <= a_ev <= -20:
         spots.append("F2客")
     if h_wp + a_wp >= 110:
         spots.append(f"F3({h_wp+a_wp:.0f}%)")
@@ -127,11 +127,11 @@ def check_esports_spots(h_wp, a_wp, h_ev, a_ev):
     diff_a = a_wp - h_wp
     if h_wp >= 65 and -30 <= h_ev <= 0:
         spots.append("E1主")
+    elif h_wp >= 60 and -40 <= h_ev <= -20:
+        spots.append("E2主")
     if a_wp >= 65 and -30 <= a_ev <= 0:
         spots.append("E1客")
-    if h_wp >= 60 and -40 <= h_ev <= -20:
-        spots.append("E2主")
-    if a_wp >= 60 and -40 <= a_ev <= -20:
+    elif a_wp >= 60 and -40 <= a_ev <= -20:
         spots.append("E2客")
     if h_wp >= 60 and diff_h >= 10:
         spots.append(f"E3主(+{diff_h:.0f}%)")
