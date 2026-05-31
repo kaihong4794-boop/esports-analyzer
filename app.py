@@ -105,51 +105,61 @@ def score_to_esports_result(score_str):
 
 def check_football_spots(h_wp, a_wp, h_ev, a_ev):
     spots = []
-    # F1 弱甜蜜点
     if h_wp >= 40 and -40 <= h_ev <= -20:
-        spots.append("🎯 F1 弱甜蜜点！主队 WP≥40%+EV -40~-20（历史75%）")
+        spots.append("F1主")
     if a_wp >= 40 and -40 <= a_ev <= -20:
-        spots.append("🎯 F1 弱甜蜜点！客队 WP≥40%+EV -40~-20（历史75%）")
-    # F2 新足球甜蜜点
+        spots.append("F1客")
     if h_wp >= 30 and -40 <= h_ev <= -20:
-        spots.append("🎯 F2 新足球甜蜜点！主队 WP≥30%+EV -40~-20（历史60.5%）")
+        spots.append("F2主")
     if a_wp >= 30 and -40 <= a_ev <= -20:
-        spots.append("🎯 F2 新足球甜蜜点！客队 WP≥30%+EV -40~-20（历史60.5%）")
-    # F3 Over 2.5
-    if h_wp + a_wp >= 90:
-        spots.append(f"⚽ F3 Over 2.5！主+客WP={h_wp+a_wp:.1f}%≥90%（历史43%）")
-    # W1 高EV陷阱反买
+        spots.append("F2客")
+    if h_wp + a_wp >= 110:
+        spots.append(f"F3({h_wp+a_wp:.0f}%)")
     if h_ev > 100:
-        spots.append(f"🔄 W1 反买！主队EV={h_ev:.0f}>+100 → 押客队（历史73.3%）")
+        spots.append(f"W1↩客({h_ev:.0f})")
     if a_ev > 100:
-        spots.append(f"🔄 W1 反买！客队EV={a_ev:.0f}>+100 → 押主队（历史73.3%）")
+        spots.append(f"W1↩主({a_ev:.0f})")
     return spots
 
 def check_esports_spots(h_wp, a_wp, h_ev, a_ev):
     spots = []
     diff_h = h_wp - a_wp
     diff_a = a_wp - h_wp
-    # E1
     if h_wp >= 65 and -30 <= h_ev <= 0:
-        spots.append("🎯 E1 电竞甜蜜点！主队 WP≥65%+EV -30~0（历史93.8%）")
+        spots.append("E1主")
     if a_wp >= 65 and -30 <= a_ev <= 0:
-        spots.append("🎯 E1 电竞甜蜜点！客队 WP≥65%+EV -30~0（历史93.8%）")
-    # E2
+        spots.append("E1客")
     if h_wp >= 60 and -40 <= h_ev <= -20:
-        spots.append("🎯 E2 电竞次级！主队 WP≥60%+EV -40~-20（历史100%）")
+        spots.append("E2主")
     if a_wp >= 60 and -40 <= a_ev <= -20:
-        spots.append("🎯 E2 电竞次级！客队 WP≥60%+EV -40~-20（历史100%）")
-    # E3
+        spots.append("E2客")
     if h_wp >= 60 and diff_h >= 10:
-        spots.append(f"🎯 E3 电竞差距！主队 WP≥60%+差距{diff_h:.0f}%≥10%（历史78.8%）")
+        spots.append(f"E3主(+{diff_h:.0f}%)")
     if a_wp >= 60 and diff_a >= 10:
-        spots.append(f"🎯 E3 电竞差距！客队 WP≥60%+差距{diff_a:.0f}%≥10%（历史78.8%）")
-    # W1 高EV陷阱反买
+        spots.append(f"E3客(+{diff_a:.0f}%)")
     if h_ev > 50:
-        spots.append(f"🔄 W1 反买！主队EV={h_ev:.0f}>+50 → 押客队（历史74.1%）")
+        spots.append(f"W1↩客({h_ev:.0f})")
     if a_ev > 50:
-        spots.append(f"🔄 W1 反买！客队EV={a_ev:.0f}>+50 → 押主队（历史74.1%）")
+        spots.append(f"W1↩主({a_ev:.0f})")
     return spots
+
+SPOT_LABELS = {
+    "F1主": "🎯 F1 弱甜蜜点 主队（历史75%）",
+    "F1客": "🎯 F1 弱甜蜜点 客队（历史75%）",
+    "F2主": "🎯 F2 新足球 主队（历史60.5%）",
+    "F2客": "🎯 F2 新足球 客队（历史60.5%）",
+    "E1主": "🎯 E1 电竞甜蜜点 主队（历史93.8%）",
+    "E1客": "🎯 E1 电竞甜蜜点 客队（历史93.8%）",
+    "E2主": "🎯 E2 电竞次级 主队（历史100%）",
+    "E2客": "🎯 E2 电竞次级 客队（历史100%）",
+}
+
+def spot_display(spot):
+    if spot in SPOT_LABELS: return SPOT_LABELS[spot]
+    if spot.startswith("F3"): return f"⚽ F3 Over 2.5 {spot}（历史65%）"
+    if spot.startswith("E3"): return f"🎯 E3 电竞差距 {spot}（历史78.8%）"
+    if "W1↩" in spot: return f"🔄 {spot}（历史73-74%）"
+    return spot
 
 def calc_sweet_spot_stats(df):
     sweet_df = df[df["甜蜜点"].astype(str).str.strip() != ""].copy()
@@ -259,8 +269,8 @@ with tab1:
         st.divider()
         spots = check_esports_spots(r['h_wr']*100, r['a_wr']*100, r['h_ev'], r['a_ev'])
         for s in spots:
-            if "🔄" in s: st.error(s)
-            else: st.success(s)
+            if "W1" in s: st.error(spot_display(s))
+            else: st.success(spot_display(s))
 
         col5, col6 = st.columns(2)
         with col5:
@@ -393,8 +403,8 @@ with tab2:
         st.divider()
         spots = check_football_spots(r['h_wr']*100, r['a_wr']*100, r['h_ev'], r['a_ev'])
         for s in spots:
-            if "🔄" in s: st.error(s)
-            else: st.success(s)
+            if "W1" in s: st.error(spot_display(s))
+            else: st.success(spot_display(s))
 
         col9, col10, col11 = st.columns(3)
         with col9:
