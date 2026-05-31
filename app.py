@@ -119,6 +119,10 @@ def check_football_spots(h_wp, a_wp, h_ev, a_ev):
         spots.append(f"W1↩客({h_ev:.0f})")
     if a_ev > 100:
         spots.append(f"W1↩主({a_ev:.0f})")
+    if h_ev == -100 and 10 <= a_wp <= 29:
+        spots.append(f"W2↩客({a_wp:.0f}%)")
+    if a_ev == -100 and 10 <= h_wp <= 29:
+        spots.append(f"W2↩主({h_wp:.0f}%)")
     return spots
 
 def check_esports_spots(h_wp, a_wp, h_ev, a_ev):
@@ -159,6 +163,7 @@ def spot_display(spot):
     if spot.startswith("F3"): return f"⚽ F3 Over 2.5 {spot}（历史65%）"
     if spot.startswith("E3"): return f"🎯 E3 电竞差距 {spot}（历史78.8%）"
     if "W1↩" in spot: return f"🔄 {spot}（历史73-74%）"
+    if "W2↩" in spot: return f"🔄 W2 {spot} EV=-100反买（历史80%）"
     return spot
 
 def calc_sweet_spot_stats(df):
@@ -176,6 +181,7 @@ def calc_sweet_spot_stats(df):
         ("🎯 E2", "E2 电竞次级"),
         ("🎯 E3", "E3 电竞差距"),
         ("🔄 W1", "W1 反买"),
+        ("🔄 W2", "W2 反买(EV=-100)"),
     ]
     results = []
     for key, label in spot_types:
