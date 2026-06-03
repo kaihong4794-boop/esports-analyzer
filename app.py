@@ -115,28 +115,36 @@ def score_to_esports_result(score_str):
 def check_football_spots(h_wp, a_wp, h_ev, a_ev):
     spots = []
 
-    # F1：WP≥40% + EV -50~-20（放宽：原-40~-20）
-    if h_wp >= 40 and -50 <= h_ev <= -20:
+    # ── F1强化版：WP≥50% + EV -40~-20（逐场验证 11场/90.9%）────────────────
+    if h_wp >= 50 and -40 <= h_ev <= -20:
         spots.append("F1主")
+    # ── F1标准版：WP≥40% + EV -40~-20（原始条件 24场/75%）──────────────────
+    elif h_wp >= 40 and -40 <= h_ev <= -20:
+        spots.append("F1主")
+    # ── F2：WP 30~39% + EV -40~-20（维持原条件）────────────────────────────
     elif h_wp >= 30 and -40 <= h_ev <= -20:
         spots.append("F2主")
 
-    if a_wp >= 40 and -50 <= a_ev <= -20:
+    if a_wp >= 50 and -40 <= a_ev <= -20:
+        spots.append("F1客")
+    elif a_wp >= 40 and -40 <= a_ev <= -20:
         spots.append("F1客")
     elif a_wp >= 30 and -40 <= a_ev <= -20:
         spots.append("F2客")
 
-    # F3：两队总WP ≥ 110%
+    # ── F3：两队总WP ≥ 110%（维持原条件）────────────────────────────────────
     if h_wp + a_wp >= 110:
         spots.append(f"F3({h_wp + a_wp:.0f}%)")
 
-    # W1↩：高正EV 反买（门槛降至60，原100）
-    if h_ev > 60:
-        spots.append(f"W1↩客({h_ev:.0f})")   # 主队EV高 → 反买押客队赢
+    # ── W1↩ 足球（逐场验证修正方向）─────────────────────────────────────────
+    # 客队EV > 60 → 反买押主队赢（42场/66.7%）
     if a_ev > 60:
-        spots.append(f"W1↩主({a_ev:.0f})")   # 客队EV高 → 反买押主队赢
+        spots.append(f"W1↩主({a_ev:.0f})")
+    # 主队EV > 100 → 反买押客队赢（11场/54.5%，仅参考）
+    if h_ev > 100:
+        spots.append(f"W1↩客({h_ev:.0f})")
 
-    # W2↩：EV=-100 反买（保留参考）
+    # ── W2↩：EV=-100 反买（保留参考）────────────────────────────────────────
     if h_ev <= -99.9 and 10 <= a_wp <= 29:
         spots.append(f"W2↩客({a_wp:.0f}%)")
     if a_ev <= -99.9 and 10 <= h_wp <= 29:
@@ -150,47 +158,45 @@ def check_esports_spots(h_wp, a_wp, h_ev, a_ev):
     diff_h = h_wp - a_wp
     diff_a = a_wp - h_wp
 
-    # E1：WP≥60% + EV -50~0（放宽：原WP≥65% + EV -30~0）
+    # ── E1：WP≥60% + EV -50~0（放宽后 15场/80%）────────────────────────────
     if h_wp >= 60 and -50 <= h_ev <= 0:
         spots.append("E1主")
-
     if a_wp >= 60 and -50 <= a_ev <= 0:
         spots.append("E1客")
 
-    # E2：WP≥55% + EV -50~-10（放宽：原WP≥60% + EV -40~-20）
-    # E2 与 E1 互斥，E1 优先
+    # ── E2：WP≥55% + EV -50~-10（E1优先，放宽后 12场/83%）──────────────────
     if h_wp >= 55 and -50 <= h_ev <= -10 and not (h_wp >= 60 and -50 <= h_ev <= 0):
         spots.append("E2主")
-
     if a_wp >= 55 and -50 <= a_ev <= -10 and not (a_wp >= 60 and -50 <= a_ev <= 0):
         spots.append("E2客")
 
-    # E3：WP≥50% + 差距≥10%（放宽：原WP≥60%）
+    # ── E3：WP≥50% + 差距≥10%（放宽后 26场/85%）────────────────────────────
     if h_wp >= 50 and diff_h >= 10:
         spots.append(f"E3主(+{diff_h:.0f}%)")
-
     if a_wp >= 50 and diff_a >= 10:
         spots.append(f"E3客(+{diff_a:.0f}%)")
 
-    # E4：新增 低WP方30~49% + 两队差距≤20% + 低WP方EV负
-    # 电竞无主客场之分，实力接近时低WP方经常爆冷（历史86%）
+    # ── E4：低WP爆冷（新增 7场/86%）────────────────────────────────────────
+    # 电竞无主客场，两队WP差距≤20%时低WP方经常爆冷
     low_wp  = min(h_wp, a_wp)
     high_wp = max(h_wp, a_wp)
     gap = high_wp - low_wp
-
     if 30 <= low_wp <= 49 and gap <= 20:
         if h_wp == low_wp and h_ev < 0:
             spots.append("E4主")
         elif a_wp == low_wp and a_ev < 0:
             spots.append("E4客")
 
-    # W1↩：高正EV 反买（主队EV>40，客队EV>30）
+    # ── W1↩ 电竞（逐场验证修正）────────────────────────────────────────────
+    # 强队WP≥60% + EV负 + 差距≥15% → 押强队（9场/88.9%）已由E3覆盖
+    # 主队EV > 40 → 反买押客队赢
     if h_ev > 40:
-        spots.append(f"W1↩客({h_ev:.0f})")   # 主队EV高 → 反买押客队赢
+        spots.append(f"W1↩客({h_ev:.0f})")
+    # 客队EV > 30 → 反买押主队赢
     if a_ev > 30:
-        spots.append(f"W1↩主({a_ev:.0f})")   # 客队EV高 → 反买押主队赢
+        spots.append(f"W1↩主({a_ev:.0f})")
 
-    # W2↩：EV=-100 反买（保留参考）
+    # ── W2↩：EV=-100 反买（保留参考）────────────────────────────────────────
     if h_ev <= -99.9 and 10 <= a_wp <= 29:
         spots.append(f"W2↩客({a_wp:.0f}%)")
     if a_ev <= -99.9 and 10 <= h_wp <= 29:
@@ -201,8 +207,8 @@ def check_esports_spots(h_wp, a_wp, h_ev, a_ev):
 
 # ─── 甜蜜点显示标签 ───────────────────────────────────────────────────────────
 SPOT_LABELS = {
-    "F1主": "🎯 F1 足球甜蜜点 主队（历史71%）",
-    "F1客": "🎯 F1 足球甜蜜点 客队（历史71%）",
+    "F1主": "🎯 F1 足球甜蜜点 主队（历史75-91%）",
+    "F1客": "🎯 F1 足球甜蜜点 客队（历史75-91%）",
     "F2主": "🎯 F2 足球次级 主队（历史40%）",
     "F2客": "🎯 F2 足球次级 客队（历史40%）",
     "E1主": "🎯 E1 电竞甜蜜点 主队（历史80%）",
@@ -221,7 +227,7 @@ def spot_display(spot):
     if spot.startswith("E3"):
         return f"🎯 E3 电竞差距 {spot}（历史85%）"
     if "W1↩" in spot:
-        return f"🔄 {spot}（历史67-74%）反买！"
+        return f"🔄 {spot}（反买！历史67-74%）"
     if "W2↩" in spot:
         return f"🔄 W2 {spot} EV=-100反买（参考）"
     return spot
@@ -256,9 +262,9 @@ def calc_sweet_spot_stats(df):
         wins = losses = refunds = 0
         for _, row in subset.iterrows():
             br = str(row.get("投注结果", "")).strip()
-            if br in ["✅ 赢", "赢"]:    wins    += 1
-            elif br in ["❌ 输", "输"]:  losses  += 1
-            elif br in ["🔄 退水", "退水"]: refunds += 1
+            if br in ["✅ 赢", "赢"]:         wins    += 1
+            elif br in ["❌ 输", "输"]:        losses  += 1
+            elif br in ["🔄 退水", "退水"]:    refunds += 1
         settled  = wins + losses + refunds
         win_rate = wins / (wins + losses) * 100 if (wins + losses) > 0 else None
         results.append({
@@ -306,8 +312,7 @@ with tab1:
                 st.caption(f"→ {result_emoji_esports.get(result, result)}")
                 e_home_vars.append(result)
             else:
-                if score_input:
-                    st.caption("⚠️ 请填有效比分")
+                if score_input: st.caption("⚠️ 请填有效比分")
                 e_home_vars.append("2-1 赢")
 
     with col4:
@@ -320,17 +325,16 @@ with tab1:
                 st.caption(f"→ {result_emoji_esports.get(result, result)}")
                 e_away_vars.append(result)
             else:
-                if score_input:
-                    st.caption("⚠️ 请填有效比分")
+                if score_input: st.caption("⚠️ 请填有效比分")
                 e_away_vars.append("2-1 赢")
 
     if st.button("⚡ 计算", key="e_calc", type="primary"):
         def e_winrate(vars, weights):
             total_w = win_w = 0
             for i, v in enumerate(vars):
-                base   = 1.0 - (i * 0.1)
+                base    = 1.0 - (i * 0.1)
                 total_w += base
-                win_w  += (1 if "赢" in v else (0.5 if "平" in v else 0)) * weights[v] * base
+                win_w   += (1 if "赢" in v else (0.5 if "平" in v else 0)) * weights[v] * base
             return win_w / total_w if total_w > 0 else 0
 
         h_wr = e_winrate(e_home_vars, score_weights_esports)
@@ -348,27 +352,25 @@ with tab1:
         st.divider()
         spots = check_esports_spots(r["h_wr"] * 100, r["a_wr"] * 100, r["h_ev"], r["a_ev"])
         for s in spots:
-            if "W1" in s or "W2" in s:
-                st.error(spot_display(s))
-            else:
-                st.success(spot_display(s))
+            if "W1" in s or "W2" in s: st.error(spot_display(s))
+            else:                       st.success(spot_display(s))
 
         col5, col6 = st.columns(2)
         with col5:
             st.subheader(r["h_name"])
-            st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}")
-            st.metric("期望值 (EV)",   f"RM{r['h_ev']:.2f}")
-            st.metric("隐含概率",       f"{1/r['h_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
+            st.metric("加权胜率 (WP)",      f"{r['h_wr']:.1%}")
+            st.metric("期望值 (EV)",        f"RM{r['h_ev']:.2f}")
+            st.metric("隐含概率",            f"{1/r['h_odds']:.1%}")
+            st.metric("优势差距 ⚠️仅参考",  f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
             if not spots:
                 if r["h_ev"] > 0: st.success("✅ 正期望值")
                 else:             st.error("❌ 负期望值")
         with col6:
             st.subheader(r["a_name"])
-            st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}")
-            st.metric("期望值 (EV)",   f"RM{r['a_ev']:.2f}")
-            st.metric("隐含概率",       f"{1/r['a_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
+            st.metric("加权胜率 (WP)",      f"{r['a_wr']:.1%}")
+            st.metric("期望值 (EV)",        f"RM{r['a_ev']:.2f}")
+            st.metric("隐含概率",            f"{1/r['a_odds']:.1%}")
+            st.metric("优势差距 ⚠️仅参考",  f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
             if not spots:
                 if r["a_ev"] > 0: st.success("✅ 正期望值")
                 else:             st.error("❌ 负期望值")
@@ -454,8 +456,7 @@ with tab2:
                 st.caption(f"→ {result_emoji_football.get(result, result)}")
                 f_home_vars.append(result)
             else:
-                if score_input:
-                    st.caption("⚠️ 格式错误，请填如 2-1")
+                if score_input: st.caption("⚠️ 格式错误，请填如 2-1")
                 f_home_vars.append("🏠 主场小胜")
 
     with col_a2:
@@ -472,8 +473,7 @@ with tab2:
                 st.caption(f"→ {result_emoji_football.get(result, result)}")
                 f_away_vars.append(result)
             else:
-                if score_input:
-                    st.caption("⚠️ 格式错误，请填如 2-1")
+                if score_input: st.caption("⚠️ 格式错误，请填如 2-1")
                 f_away_vars.append("✈️ 客场小胜")
 
     if st.button("⚡ 计算", key="f_calc", type="primary"):
@@ -495,35 +495,33 @@ with tab2:
         st.divider()
         spots = check_football_spots(r["h_wr"] * 100, r["a_wr"] * 100, r["h_ev"], r["a_ev"])
         for s in spots:
-            if "W1" in s or "W2" in s:
-                st.error(spot_display(s))
-            else:
-                st.success(spot_display(s))
+            if "W1" in s or "W2" in s: st.error(spot_display(s))
+            else:                       st.success(spot_display(s))
 
         col9, col10, col11 = st.columns(3)
         with col9:
             st.subheader(f_home_name)
-            st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}")
-            st.metric("期望值 (EV)",   f"RM{r['h_ev']:.2f}")
-            st.metric("隐含概率",       f"{1/r['h_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
+            st.metric("加权胜率 (WP)",      f"{r['h_wr']:.1%}")
+            st.metric("期望值 (EV)",        f"RM{r['h_ev']:.2f}")
+            st.metric("隐含概率",            f"{1/r['h_odds']:.1%}")
+            st.metric("优势差距 ⚠️仅参考",  f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
             if not spots:
                 if r["h_ev"] > 0: st.success("✅ 正期望值")
                 else:             st.error("❌ 负期望值")
         with col10:
             st.subheader("平局")
-            st.metric("平局概率",       f"{r['draw_prob']:.1%}")
-            st.metric("期望值 (EV)",   f"RM{r['d_ev']:.2f}")
-            st.metric("隐含概率",       f"{1/r['d_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['draw_prob'] - 1/r['d_odds']:+.1%}")
+            st.metric("平局概率",            f"{r['draw_prob']:.1%}")
+            st.metric("期望值 (EV)",        f"RM{r['d_ev']:.2f}")
+            st.metric("隐含概率",            f"{1/r['d_odds']:.1%}")
+            st.metric("优势差距 ⚠️仅参考",  f"{r['draw_prob'] - 1/r['d_odds']:+.1%}")
             if r["d_ev"] > 0: st.success("✅ 正期望值")
             else:             st.error("❌ 负期望值")
         with col11:
             st.subheader(f_away_name)
-            st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}")
-            st.metric("期望值 (EV)",   f"RM{r['a_ev']:.2f}")
-            st.metric("隐含概率",       f"{1/r['a_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
+            st.metric("加权胜率 (WP)",      f"{r['a_wr']:.1%}")
+            st.metric("期望值 (EV)",        f"RM{r['a_ev']:.2f}")
+            st.metric("隐含概率",            f"{1/r['a_odds']:.1%}")
+            st.metric("优势差距 ⚠️仅参考",  f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
             if not spots:
                 if r["a_ev"] > 0: st.success("✅ 正期望值")
                 else:             st.error("❌ 负期望值")
@@ -614,18 +612,18 @@ with tab3:
         col5, col6 = st.columns(2)
         with col5:
             st.subheader(b_home_name)
-            st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}")
-            st.metric("期望值 (EV)",   f"RM{r['h_ev']:.2f}")
-            st.metric("隐含概率",       f"{1/r['h_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
+            st.metric("加权胜率 (WP)",      f"{r['h_wr']:.1%}")
+            st.metric("期望值 (EV)",        f"RM{r['h_ev']:.2f}")
+            st.metric("隐含概率",            f"{1/r['h_odds']:.1%}")
+            st.metric("优势差距 ⚠️仅参考",  f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
             if r["h_ev"] > 0: st.success("✅ 正期望值")
             else:             st.error("❌ 负期望值")
         with col6:
             st.subheader(b_away_name)
-            st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}")
-            st.metric("期望值 (EV)",   f"RM{r['a_ev']:.2f}")
-            st.metric("隐含概率",       f"{1/r['a_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
+            st.metric("加权胜率 (WP)",      f"{r['a_wr']:.1%}")
+            st.metric("期望值 (EV)",        f"RM{r['a_ev']:.2f}")
+            st.metric("隐含概率",            f"{1/r['a_odds']:.1%}")
+            st.metric("优势差距 ⚠️仅参考",  f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
             if r["a_ev"] > 0: st.success("✅ 正期望值")
             else:             st.error("❌ 负期望值")
 
