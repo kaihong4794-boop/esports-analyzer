@@ -13,7 +13,7 @@ HEADERS = [
     "主队期望值", "平局期望值", "客队期望值",
     "主队隐含概率", "平局隐含概率", "客队隐含概率",
     "主队优势差距", "平局优势差距", "客队优势差距",
-    "比赛结果", "甜蜜点", "投注结果"
+    "比赛结果", "甜蜜点", "建议下注", "押注方向", "投注结果"
 ]
 
 # ─── Google Sheets ────────────────────────────────────────────────────────────
@@ -456,6 +456,23 @@ with tab1:
 
         st.divider()
         if st.button("💾 保存记录", key="e_save"):
+            # 计算建议下注和押注方向
+            bet_on_home = any("主" in s and "W1↩" not in s for s in spots)
+            bet_on_away = any("客" in s and "W1↩" not in s for s in spots)
+            w1_home = any("W1↩主" in s for s in spots)
+            w1_away = any("W1↩客" in s for s in spots)
+            if bet_on_home or w1_home:
+                save_bet_odds = r["h_odds"]
+                save_bet_dir  = r["h_name"]
+            elif bet_on_away or w1_away:
+                save_bet_odds = r["a_odds"]
+                save_bet_dir  = r["a_name"]
+            else:
+                save_bet_odds = min(r["h_odds"], r["a_odds"])
+                save_bet_dir  = "待定"
+            save_kelly = kelly_suggestion(spots, save_bet_odds, 1000)
+            save_bet_amount = f"{save_kelly['建议下注']}块" if save_kelly else "—"
+
             record = {
                 "日期": str(date.today()), "运动": "电竞",
                 "主队": r["h_name"], "客队": r["a_name"],
@@ -467,7 +484,9 @@ with tab1:
                 "客队隐含概率": f"{1/r['a_odds']:.1%}",
                 "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}", "平局优势差距": "N/A",
                 "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
-                "比赛结果": "", "甜蜜点": sweet_combined, "投注结果": "",
+                "比赛结果": "", "甜蜜点": sweet_combined,
+                "建议下注": save_bet_amount, "押注方向": save_bet_dir,
+                "投注结果": "",
             }
             save_to_sheet(record)
             st.success("✅ 记录已保存！")
@@ -645,6 +664,27 @@ with tab2:
 
         st.divider()
         if st.button("💾 保存记录", key="f_save"):
+            # 计算建议下注和押注方向
+            is_draw_spot = any("F2" in s for s in spots)
+            is_home_spot = any("主" in s and "W1↩" not in s and "F2" not in s for s in spots)
+            is_away_spot = any("客" in s and "W1↩" not in s and "F2" not in s for s in spots)
+            w1_home = any("W1↩主" in s for s in spots)
+            w1_away = any("W1↩客" in s for s in spots)
+            if is_draw_spot:
+                save_bet_odds = r["d_odds"]
+                save_bet_dir  = "平局"
+            elif is_home_spot or w1_home:
+                save_bet_odds = r["h_odds"]
+                save_bet_dir  = r["h_name"]
+            elif is_away_spot or w1_away:
+                save_bet_odds = r["a_odds"]
+                save_bet_dir  = r["a_name"]
+            else:
+                save_bet_odds = r["h_odds"]
+                save_bet_dir  = "待定"
+            save_kelly = kelly_suggestion(spots, save_bet_odds, 1000)
+            save_bet_amount = f"{save_kelly['建议下注']}块" if save_kelly else "—"
+
             record = {
                 "日期": str(date.today()), "运动": "足球",
                 "主队": r["h_name"], "客队": r["a_name"],
@@ -660,7 +700,9 @@ with tab2:
                 "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}",
                 "平局优势差距": f"{r['draw_prob'] - 1/r['d_odds']:+.1%}",
                 "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
-                "比赛结果": "", "甜蜜点": sweet_val, "投注结果": "",
+                "比赛结果": "", "甜蜜点": sweet_val,
+                "建议下注": save_bet_amount, "押注方向": save_bet_dir,
+                "投注结果": "",
             }
             save_to_sheet(record)
             st.success("✅ 记录已保存！")
