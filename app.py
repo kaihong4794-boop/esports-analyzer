@@ -408,6 +408,7 @@ with tab1:
         r = st.session_state["e_result"]
         st.divider()
         spots = check_esports_spots(r["h_wr"] * 100, r["a_wr"] * 100, r["h_ev"], r["a_ev"])
+        sweet_combined = " | ".join(spots)  # 提前定义，保存按钮可以用
         for s in spots:
             if "W1" in s or "W2" in s: st.error(spot_display(s))
             else:                       st.success(spot_display(s))
@@ -465,7 +466,6 @@ with tab1:
 
         st.divider()
         if st.button("💾 保存记录", key="e_save"):
-            sweet_combined = " | ".join(spots)
             record = {
                 "日期": str(date.today()), "运动": "电竞",
                 "主队": r["h_name"], "客队": r["a_name"],
@@ -582,6 +582,7 @@ with tab2:
         r = st.session_state["f_result"]
         st.divider()
         spots = check_football_spots(r["h_wr"] * 100, r["a_wr"] * 100, r["h_ev"], r["a_ev"])
+        sweet_val = " | ".join(spots)  # 提前定义，保存按钮可以用
         for s in spots:
             if "W1" in s or "W2" in s: st.error(spot_display(s))
             else:                       st.success(spot_display(s))
@@ -651,7 +652,6 @@ with tab2:
 
         st.divider()
         if st.button("💾 保存记录", key="f_save"):
-            sweet_val = " | ".join(spots)
             record = {
                 "日期": str(date.today()), "运动": "足球",
                 "主队": r["h_name"], "客队": r["a_name"],
