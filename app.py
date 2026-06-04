@@ -170,22 +170,26 @@ def check_esports_spots(h_wp, a_wp, h_ev, a_ev):
     if a_wp >= 55 and -50 <= a_ev <= -10 and not (a_wp >= 60 and -50 <= a_ev <= 0):
         spots.append("E2客")
 
-    # ── E3：WP≥50% + 差距≥10%（放宽后 26场/85%）────────────────────────────
+    # ── E3：WP≥50% + 差距≥10%（44场/75%）E3优先于E4 ────────────────────────
+    e3_triggered = False
     if h_wp >= 50 and diff_h >= 10:
         spots.append(f"E3主(+{diff_h:.0f}%)")
+        e3_triggered = True
     if a_wp >= 50 and diff_a >= 10:
         spots.append(f"E3客(+{diff_a:.0f}%)")
+        e3_triggered = True
 
-    # ── E4：低WP爆冷（新增 7场/86%）────────────────────────────────────────
-    # 电竞无主客场，两队WP差距≤20%时低WP方经常爆冷
-    low_wp  = min(h_wp, a_wp)
-    high_wp = max(h_wp, a_wp)
-    gap = high_wp - low_wp
-    if 30 <= low_wp <= 49 and gap <= 20:
-        if h_wp == low_wp and h_ev < 0:
-            spots.append("E4主")
-        elif a_wp == low_wp and a_ev < 0:
-            spots.append("E4客")
+    # ── E4：低WP爆冷（E3不触发时才生效，10场/80%）──────────────────────────
+    # 电竞无主客场，E3和E4方向相反会冲突，E3优先避免矛盾
+    if not e3_triggered:
+        low_wp  = min(h_wp, a_wp)
+        high_wp = max(h_wp, a_wp)
+        gap = high_wp - low_wp
+        if 30 <= low_wp <= 49 and gap <= 20:
+            if h_wp == low_wp and h_ev < 0:
+                spots.append("E4主")
+            elif a_wp == low_wp and a_ev < 0:
+                spots.append("E4客")
 
     # ── W1↩ 电竞（逐场验证修正）────────────────────────────────────────────
     # 强队WP≥60% + EV负 + 差距≥15% → 押强队（9场/88.9%）已由E3覆盖
@@ -203,6 +207,59 @@ def check_esports_spots(h_wp, a_wp, h_ev, a_ev):
         spots.append(f"W2↩主({h_wp:.0f}%)")
 
     return spots
+
+
+# ─── 分级注额资金管理 ────────────────────────────────────────────────────────
+def get_spot_winrate(spot):
+    """根据甜蜜点代号返回历史胜率"""
+    if "F1精准" in spot: return 0.91
+    if "F1" in spot:     return 0.75
+    if "F2" in spot:     return 0.53
+    if "F3" in spot:     return 0.65
+    if "E1" in spot:     return 0.84
+    if "E2" in spot:     return 0.83
+    if "E3" in spot:     return 0.75
+    if "E4" in spot:     return 0.80
+    if "W1↩" in spot:    return 0.67
+    if "W2↩" in spot:    return 0.50
+    return 0.60
+
+def tiered_bet(odds):
+    """
+    分级注额：根据赔率决定下注额
+    赔率越高 → 下注越多（跟凯利方向一致）
+    """
+    if odds < 1.50:   return 30
+    elif odds < 1.80: return 50
+    elif odds < 2.21: return 70
+    else:             return 100
+
+def kelly_suggestion(spots, odds, bankroll):
+    """
+    根据甜蜜点和赔率，返回建议下注额和说明
+    使用分级注额策略
+    """
+    if not spots:
+        return None
+
+    best_wr = max(get_spot_winrate(s) for s in spots)
+    bet = tiered_bet(odds)
+    break_even = 1 / odds * 100
+    expected_positive = best_wr * 100 > break_even
+
+    # 赔率档位说明
+    if odds < 1.50:   tier = "低赔率档（<1.50）"
+    elif odds < 1.80: tier = "标准档（1.50~1.79）"
+    elif odds < 2.21: tier = "高赔率档（1.80~2.20）"
+    else:             tier = "超高赔率档（>2.20）"
+
+    return {
+        "胜率":     f"{best_wr*100:.0f}%",
+        "建议下注": bet,
+        "盈亏平衡": f"{break_even:.1f}%",
+        "正期望":   expected_positive,
+        "档位":     tier,
+    }
 
 
 # ─── 甜蜜点显示标签 ───────────────────────────────────────────────────────────
@@ -376,6 +433,37 @@ with tab1:
                 else:             st.error("❌ 负期望值")
 
         st.divider()
+        # ── 分级注额建议 ──────────────────────────────────────────────
+        if spots:
+            st.subheader("💰 分级注额建议")
+
+            bet_on_home = any("主" in s and "W1↩" not in s for s in spots)
+            bet_on_away = any("客" in s and "W1↩" not in s for s in spots)
+            w1_home = any("W1↩主" in s for s in spots)
+            w1_away = any("W1↩客" in s for s in spots)
+
+            if bet_on_home or w1_home:
+                bet_odds = r["h_odds"]
+                bet_dir  = r["h_name"]
+            elif bet_on_away or w1_away:
+                bet_odds = r["a_odds"]
+                bet_dir  = r["a_name"]
+            else:
+                bet_odds = min(r["h_odds"], r["a_odds"])
+                bet_dir  = "待定"
+
+            kelly = kelly_suggestion(spots, bet_odds, 1000)
+            if kelly:
+                ck1, ck2, ck3 = st.columns(3)
+                ck1.metric("建议下注",  f"{kelly['建议下注']}块")
+                ck2.metric("历史胜率",  kelly["胜率"])
+                ck3.metric("盈亏平衡",  kelly["盈亏平衡"])
+                if kelly["正期望"]:
+                    st.success(f"✅ 正期望！建议押 **{bet_dir}**，下注 **{kelly['建议下注']}块**（{kelly['档位']}）")
+                else:
+                    st.warning(f"⚠️ 赔率太低，期望值为负，谨慎下注！")
+
+        st.divider()
         if st.button("💾 保存记录", key="e_save"):
             sweet_combined = " | ".join(spots)
             record = {
@@ -525,6 +613,41 @@ with tab2:
             if not spots:
                 if r["a_ev"] > 0: st.success("✅ 正期望值")
                 else:             st.error("❌ 负期望值")
+
+        st.divider()
+        # ── 分级注额建议 ──────────────────────────────────────────────
+        if spots:
+            st.subheader("💰 分级注额建议")
+
+            is_draw_spot = any("F2" in s for s in spots)
+            is_home_spot = any("主" in s and "W1↩" not in s and "F2" not in s for s in spots)
+            is_away_spot = any("客" in s and "W1↩" not in s and "F2" not in s for s in spots)
+            w1_home = any("W1↩主" in s for s in spots)
+            w1_away = any("W1↩客" in s for s in spots)
+
+            if is_draw_spot:
+                bet_odds = r["d_odds"]
+                bet_dir  = "平局"
+            elif is_home_spot or w1_home:
+                bet_odds = r["h_odds"]
+                bet_dir  = r["h_name"]
+            elif is_away_spot or w1_away:
+                bet_odds = r["a_odds"]
+                bet_dir  = r["a_name"]
+            else:
+                bet_odds = r["h_odds"]
+                bet_dir  = r["h_name"]
+
+            kelly = kelly_suggestion(spots, bet_odds, 1000)
+            if kelly:
+                fk1, fk2, fk3 = st.columns(3)
+                fk1.metric("建议下注",  f"{kelly['建议下注']}块")
+                fk2.metric("历史胜率",  kelly["胜率"])
+                fk3.metric("盈亏平衡",  kelly["盈亏平衡"])
+                if kelly["正期望"]:
+                    st.success(f"✅ 正期望！建议押 **{bet_dir}**，下注 **{kelly['建议下注']}块**（{kelly['档位']}）")
+                else:
+                    st.warning(f"⚠️ 赔率太低，期望值为负，谨慎下注！")
 
         st.divider()
         if st.button("💾 保存记录", key="f_save"):
