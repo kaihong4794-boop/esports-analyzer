@@ -107,28 +107,26 @@ def score_to_esports_result(score_str):
 def check_football_spots(h_wp, a_wp, h_ev, a_ev, h_impl=None, a_impl=None):
     spots = []
 
-    # ── F★ 精准：WP≥55% + EV -40~-20（10场/100%）────────────────────────────
-    if h_wp >= 55 and -40 <= h_ev <= -20:
+    # ── F★ 精准：WP≥55% + EV -50~-10（15场/86.7%）──────────────────────────
+    if h_wp >= 55 and -50 <= h_ev <= -10:
         spots.append("F★主")
-    # ── F1：WP≥50% + EV -50~-20（15场/87%）─────────────────────────────────
+    # ── F1：WP≥50% + EV -50~-20（16场/87.5%）───────────────────────────────
     elif h_wp >= 50 and -50 <= h_ev <= -20:
         spots.append("F1主")
 
-    if a_wp >= 55 and -40 <= a_ev <= -20:
+    if a_wp >= 55 and -50 <= a_ev <= -10:
         spots.append("F★客")
     elif a_wp >= 50 and -50 <= a_ev <= -20:
         spots.append("F1客")
 
-    # ── F2：WP 30~45% + EV -50~-15 → 押让0.5球（41场/83%）──────────────────
-    # 逆向逻辑：这种队赢不了但也不会输 → 赢+平=83%
-    # 纯平局率34%，平局赔率高时考虑直接押平
+    # ── F2：WP 30~45% + EV -50~-15 → 押让0.5球（43场/83.7%）────────────────
+    # 赢+平=83.7%  纯平局率~34%，平局赔率高时可直接押平
     if 30 <= h_wp <= 45 and -50 <= h_ev <= -15 and "F★主" not in spots and "F1主" not in spots:
         spots.append("F2主")
     if 30 <= a_wp <= 45 and -50 <= a_ev <= -15 and "F★客" not in spots and "F1客" not in spots:
         spots.append("F2客")
 
     # ── F4：WP差距<10% + 隐含概率差距>30%（15场/73%）────────────────────────
-    # 庄家信号：两队实力接近但庄家偷偷偏向一方
     if h_impl is not None and a_impl is not None:
         wp_gap   = abs(h_wp - a_wp)
         impl_gap = abs(h_impl - a_impl)
@@ -136,7 +134,7 @@ def check_football_spots(h_wp, a_wp, h_ev, a_ev, h_impl=None, a_impl=None):
             if h_impl > a_impl: spots.append("F4主")
             else:               spots.append("F4客")
 
-    # ── W1↩ 足球逆向：客队EV>200 → 市场严重低估主队 → 押主队（14场/79%）────
+    # ── W1↩ 足球逆向：客队EV>200 → 押主队（14场/79%）───────────────────────
     if a_ev > 200:
         spots.append(f"W1↩主({a_ev:.0f})")
 
@@ -148,25 +146,22 @@ def check_esports_spots(h_wp, a_wp, h_ev, a_ev):
     diff_h = h_wp - a_wp
     diff_a = a_wp - h_wp
 
-    # ── E★ 最强：WP≥55% + 差距≥10% + EV -50~-10（8场/100%）─────────────────
-    # 三重确认：WP高 + 差距大 + EV合理负值
-    e_star = False
-    if h_wp >= 55 and diff_h >= 10 and -50 <= h_ev <= -10:
-        spots.append(f"E★主(+{diff_h:.0f}%)")
-        e_star = True
-    if a_wp >= 55 and diff_a >= 10 and -50 <= a_ev <= -10:
-        spots.append(f"E★客(+{diff_a:.0f}%)")
-        e_star = True
+    # ── E3主 最强：WP≥55% + 差距≥10%（20场/90%）────────────────────────────
+    # 数据最多最稳！WP高且差距大 = 强队优势明显
+    e3 = False
+    if h_wp >= 55 and diff_h >= 10:
+        spots.append(f"E3主(+{diff_h:.0f}%)")
+        e3 = True
 
-    # ── E1：WP≥60% + EV -40~-20（6场/100%，E★优先）──────────────────────────
-    if not e_star:
-        if h_wp >= 60 and -40 <= h_ev <= -20:
+    # ── E1：WP≥60% + EV -40~0（15场/80%，E3优先）───────────────────────────
+    if not e3:
+        if h_wp >= 60 and -40 <= h_ev <= 0:
             spots.append("E1主")
-        if a_wp >= 60 and -40 <= a_ev <= -20:
+        if a_wp >= 60 and -40 <= a_ev <= 0:
             spots.append("E1客")
 
-    # ── E2：WP≥55% + EV -40~-10（12场/83%，不与E★/E1重叠）──────────────────
-    if not any("E★" in s or "E1" in s for s in spots):
+    # ── E2：WP≥55% + EV -40~-10（E3/E1优先）────────────────────────────────
+    if not any("E3" in s or "E1" in s for s in spots):
         if h_wp >= 55 and -40 <= h_ev <= -10:
             spots.append("E2主")
         if a_wp >= 55 and -40 <= a_ev <= -10:
@@ -191,40 +186,41 @@ def check_esports_spots(h_wp, a_wp, h_ev, a_ev):
 
 # ─── 甜蜜点显示标签 ───────────────────────────────────────────────────────────
 SPOT_LABELS = {
-    "F★主": "🏆 F★ 足球精准甜蜜点 主队（历史100%）",
-    "F★客": "🏆 F★ 足球精准甜蜜点 客队（历史100%）",
-    "F1主": "🎯 F1 足球甜蜜点 主队（历史87%）",
-    "F1客": "🎯 F1 足球甜蜜点 客队（历史87%）",
-    "F2主": "🎯 F2 足球让球 主队 → 押让0.5球！（历史83%）",
-    "F2客": "🎯 F2 足球让球 客队 → 押让0.5球！（历史83%）",
-    "F4主": "🎯 F4 足球庄家信号 主队（历史73%）",
-    "F4客": "🎯 F4 足球庄家信号 客队（历史73%）",
-    "E1主": "🎯 E1 电竞精准 主队（历史100%）",
-    "E1客": "🎯 E1 电竞精准 客队（历史100%）",
-    "E2主": "🎯 E2 电竞甜蜜点 主队（历史83%）",
-    "E2客": "🎯 E2 电竞甜蜜点 客队（历史83%）",
+    "F★主": "🏆 F★ 足球精准甜蜜点 主队（15场/87%）",
+    "F★客": "🏆 F★ 足球精准甜蜜点 客队（15场/87%）",
+    "F1主": "🎯 F1 足球甜蜜点 主队（16场/87.5%）",
+    "F1客": "🎯 F1 足球甜蜜点 客队（16场/87.5%）",
+    "F2主": "🎯 F2 足球让球 主队 → 押让0.5球！（43场/83.7%）",
+    "F2客": "🎯 F2 足球让球 客队 → 押让0.5球！（43场/83.7%）",
+    "F4主": "🎯 F4 足球庄家信号 主队（15场/73%）",
+    "F4客": "🎯 F4 足球庄家信号 客队（15场/73%）",
+    "E1主": "🎯 E1 电竞甜蜜点 主队（15场/80%）",
+    "E1客": "🎯 E1 电竞甜蜜点 客队（15场/80%）",
+    "E2主": "🎯 E2 电竞次级 主队（历史83%）",
+    "E2客": "🎯 E2 电竞次级 客队（历史83%）",
 }
 
 def spot_display(spot):
     if spot in SPOT_LABELS: return SPOT_LABELS[spot]
-    if spot.startswith("E★主"): return f"🏆 E★ 电竞最强甜蜜点 {spot}（历史100%）"
-    if spot.startswith("E★客"): return f"🏆 E★ 电竞最强甜蜜点 {spot}（历史100%）"
-    if spot.startswith("EX主"): return f"🔄 EX 电竞逆向信号 {spot} → 押主队（历史80%）"
-    if spot.startswith("EX客"): return f"🔄 EX 电竞逆向信号 {spot} → 押客队（历史80%）"
-    if "W1↩" in spot:           return f"🔄 {spot}（逆向反买！历史75-79%）"
+    if spot.startswith("E3主"): return f"🏆 E3 电竞最强差距 {spot}（20场/90%）"
+    if spot.startswith("E3客"): return f"⚠️ E3客 电竞差距 {spot}（12场/67%，谨慎）"
+    if spot.startswith("EX主"): return f"🔄 EX 电竞逆向 {spot} → 押主队（10场/80%）"
+    if spot.startswith("EX客"): return f"🔄 EX 电竞逆向 {spot} → 押客队（10场/80%）"
+    if "W1↩" in spot:           return f"🔄 {spot}（逆向反买！历史79%）"
     return spot
 
 # ─── 资金管理 ─────────────────────────────────────────────────────────────────
 def get_spot_winrate(spot):
-    if "F★" in spot:  return 1.00
-    if "F1" in spot:  return 0.87
-    if "F2" in spot:  return 0.83
+    if "F★" in spot:  return 0.87
+    if "F1" in spot:  return 0.875
+    if "F2" in spot:  return 0.837
     if "F4" in spot:  return 0.73
-    if "E★" in spot:  return 1.00
-    if "E1" in spot:  return 1.00
+    if "E3主" in spot: return 0.90
+    if "E3客" in spot: return 0.67
+    if "E1" in spot:  return 0.80
     if "E2" in spot:  return 0.83
     if "EX" in spot:  return 0.80
-    if "W1↩" in spot: return 0.77
+    if "W1↩" in spot: return 0.79
     return 0.65
 
 def tiered_bet(odds):
