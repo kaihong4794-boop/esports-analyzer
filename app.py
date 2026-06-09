@@ -235,6 +235,8 @@ def get_spot_winrate(spot):
     if "E2" in spot:  return 0.83
     if "EX" in spot:  return 0.80
     if "W1↩" in spot: return 0.79
+    if "BW↩" in spot: return 0.83
+    if "B8" in spot:  return 0.67
     return 0.65
 
 def tiered_bet(odds):
@@ -272,6 +274,8 @@ def calc_sweet_spot_stats(df):
         ("E★", "E★ 电竞最强"), ("E1", "E1 电竞精准"),
         ("E2", "E2 电竞甜蜜点"), ("EX", "EX 电竞逆向"),
         ("W1", "W1 逆向反买"),
+        ("B8", "B8 棒球强队"),
+        ("BW↩", "BW↩ 棒球逆向"),
     ]
     results = []
     for key, label in spot_types:
@@ -875,10 +879,71 @@ with tab4:
             if r["a_ev"] > 0: st.success("✅ 正期望值")
             else:             st.error("❌ 负期望值")
 
+        # ── 棒球甜蜜点检测 ────────────────────────────────────────────────────
         st.divider()
-        st.caption("⚾ 棒球甜蜜点规律仍在收集中，先记录数据积累样本")
+        bb_spots = []
+        h_impl = 1 / r["h_odds"] * 100
+        a_impl = 1 / r["a_odds"] * 100
+
+        # B8：WP≥75% + EV≥+20 → 押高WP队
+        if r["h_wr"] * 100 >= 75 and r["h_ev"] >= 20:
+            bb_spots.append(f"B8主({r['h_wr']:.0%})")
+        if r["a_wr"] * 100 >= 75 and r["a_ev"] >= 20:
+            bb_spots.append(f"B8客({r['a_wr']:.0%})")
+
+        # BW↩：客队EV≥+40 + 主队WP≥45% → 逆向押主队
+        if r["a_ev"] >= 40 and r["h_wr"] * 100 >= 45:
+            bb_spots.append(f"BW↩主(客EV{r['a_ev']:.0f})")
+
+        if bb_spots:
+            st.subheader("🎯 棒球甜蜜点触发！")
+            for s in bb_spots:
+                if "BW↩" in s:
+                    st.warning(f"🔄 {s} — 客队EV虚高，逆向押主队！（历史83%）")
+                else:
+                    st.success(f"⚾ {s} — 强队占优，押高WP队！（历史67%）")
+
+            # 押注方向
+            if any("BW↩主" in s for s in bb_spots):
+                bb_bet_dir = r["h_name"]
+                bb_bet_odds = r["h_odds"]
+            elif any("B8主" in s for s in bb_spots):
+                bb_bet_dir = r["h_name"]
+                bb_bet_odds = r["h_odds"]
+            elif any("B8客" in s for s in bb_spots):
+                bb_bet_dir = r["a_name"]
+                bb_bet_odds = r["a_odds"]
+            else:
+                bb_bet_dir = "待定"
+                bb_bet_odds = r["h_odds"]
+
+            # 简单Kelly建议
+            spot_wr = 0.83 if any("BW↩" in s for s in bb_spots) else 0.67
+            edge = spot_wr - (1 / bb_bet_odds)
+            if edge > 0:
+                kelly_frac = edge / (bb_bet_odds - 1)
+                suggested = max(10, min(50, round(kelly_frac * 200 / 10) * 10))
+                st.success(f"✅ 建议押 **{bb_bet_dir}**，下注约 **{suggested}块**（历史胜率{spot_wr:.0%}）")
+        else:
+            st.caption("⚾ 今日无棒球甜蜜点触发，仅记录数据")
 
         if st.button("💾 保存记录", key="bb_save"):
+            bb_spot_str = " | ".join(bb_spots) if bb_spots else "—"
+            if any("BW↩主" in s for s in bb_spots):
+                save_dir = r["h_name"]; save_odds = r["h_odds"]
+            elif any("B8主" in s for s in bb_spots):
+                save_dir = r["h_name"]; save_odds = r["h_odds"]
+            elif any("B8客" in s for s in bb_spots):
+                save_dir = r["a_name"]; save_odds = r["a_odds"]
+            else:
+                save_dir = "—"; save_odds = r["h_odds"]
+            spot_wr2 = 0.83 if any("BW↩" in s for s in bb_spots) else 0.67
+            edge2 = spot_wr2 - (1 / save_odds) if bb_spots else 0
+            if edge2 > 0:
+                kelly_frac2 = edge2 / (save_odds - 1)
+                save_amount = max(10, min(50, round(kelly_frac2 * 200 / 10) * 10))
+            else:
+                save_amount = "—"
             record = {
                 "日期": str(date.today()), "运动": "棒球",
                 "主队": r["h_name"], "客队": r["a_name"],
@@ -890,9 +955,9 @@ with tab4:
                 "客队隐含概率": f"{1/r['a_odds']:.1%}",
                 "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}", "平局优势差距": "N/A",
                 "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
-                "比赛结果": "", "甜蜜点": "",
-                "建议下注": "—",
-                "押注方向": "—", "投注结果": "",
+                "比赛结果": "", "甜蜜点": bb_spot_str,
+                "建议下注": save_amount,
+                "押注方向": save_dir, "投注结果": "",
             }
             save_to_sheet(record)
             st.success("✅ 记录已保存！")
