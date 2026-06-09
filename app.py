@@ -728,12 +728,25 @@ with tab3:
 with tab4:
     st.header("⚾ 棒球期望值分析器")
 
+    MLB_TEAMS = [
+        "Arizona Diamondbacks", "Atlanta Braves", "Baltimore Orioles",
+        "Boston Red Sox", "Chicago Cubs", "Chicago White Sox",
+        "Cincinnati Reds", "Cleveland Guardians", "Colorado Rockies",
+        "Detroit Tigers", "Houston Astros", "Kansas City Royals",
+        "Los Angeles Angels", "Los Angeles Dodgers", "Miami Marlins",
+        "Milwaukee Brewers", "Minnesota Twins", "New York Mets",
+        "New York Yankees", "Oakland Athletics", "Philadelphia Phillies",
+        "Pittsburgh Pirates", "San Diego Padres", "San Francisco Giants",
+        "Seattle Mariners", "St. Louis Cardinals", "Tampa Bay Rays",
+        "Texas Rangers", "Toronto Blue Jays", "Washington Nationals",
+    ]
+
     col1, col2 = st.columns(2)
     with col1:
-        bb_home_name = st.text_input("主队名字", "主队", key="bb_home_name")
+        bb_home_name = st.selectbox("主队", MLB_TEAMS, key="bb_home_name")
         bb_home_odds = st.number_input("主队赔率", min_value=1.01, value=1.90, step=0.01, key="bb_home_odds")
     with col2:
-        bb_away_name = st.text_input("客队名字", "客队", key="bb_away_name")
+        bb_away_name = st.selectbox("客队", MLB_TEAMS, index=1, key="bb_away_name")
         bb_away_odds = st.number_input("客队赔率", min_value=1.01, value=1.90, step=0.01, key="bb_away_odds")
 
     st.divider()
