@@ -119,7 +119,7 @@ def check_football_spots(h_wp, a_wp, h_ev, a_ev, h_impl=None, a_impl=None):
     elif a_wp >= 50 and -50 <= a_ev <= -20:
         spots.append("F1客")
 
-    # ── F2：WP 30~45% + EV -50~-15 → 押让0.5球（43场/83.7%）────────────────
+    # ── F2：WP 30~45% + EV -50~-15 → 押胜平（43场/83.7%）────────────────
     # 赢+平=83.7%  纯平局率~34%，平局赔率高时可直接押平
     if 30 <= h_wp <= 45 and -50 <= h_ev <= -15 and "F★主" not in spots and "F1主" not in spots:
         spots.append("F2主")
@@ -201,8 +201,8 @@ SPOT_LABELS = {
     "F★客": "🏆 F★ 足球精准甜蜜点 客队（15场/87%）",
     "F1主": "🎯 F1 足球甜蜜点 主队（16场/87.5%）",
     "F1客": "🎯 F1 足球甜蜜点 客队（16场/87.5%）",
-    "F2主": "🎯 F2 足球让球 主队 → 押让0.5球！（43场/83.7%）",
-    "F2客": "🎯 F2 足球让球 客队 → 押让0.5球！（43场/83.7%）",
+    "F2主": "🎯 F2 足球胜平 主队 → 押胜平！（43场/83.7%）",
+    "F2客": "🎯 F2 足球胜平 客队 → 押胜平！（43场/83.7%）",
     "F4主": "🎯 F4 足球庄家信号 主队（15场/73%）",
     "F4客": "🎯 F4 足球庄家信号 客队（15场/73%）",
     "E1主": "🎯 E1 电竞甜蜜点 主队（15场/80%）",
@@ -269,7 +269,7 @@ def calc_sweet_spot_stats(df):
     if sweet_df.empty: return None
     spot_types = [
         ("F★", "F★ 足球精准"), ("F1", "F1 足球甜蜜点"),
-        ("F2", "F2 足球让球"), ("F4", "F4 足球庄家信号"),
+        ("F2", "F2 足球胜平"), ("F4", "F4 足球庄家信号"),
         ("FW↩", "FW↩ 足球逆向吃球"),
         ("E★", "E★ 电竞最强"), ("E1", "E1 电竞精准"),
         ("E2", "E2 电竞甜蜜点"), ("EX", "EX 电竞逆向"),
@@ -565,7 +565,7 @@ with tab2:
 
         # F2特别提示
         if any("F2" in s for s in spots):
-            st.info("💡 F2触发：这队赢+平概率83%！建议押**让0.5球**。平局赔率高时也可考虑直接押**平局**（历史34%）")
+            st.info("💡 F2触发：这队赢+平概率83%！建议押**胜平**（主队赢或平局都算赢）。")
 
         st.divider()
         if spots:
@@ -585,9 +585,9 @@ with tab2:
                     bet_odds = r["a_odds"]; bet_dir = f"{r['a_name']}（吃球）"
             elif is_f2:
                 if any("F2主" in s for s in spots):
-                    bet_odds = r["h_odds"]; bet_dir = f"{r['h_name']}（让0.5球）"
+                    bet_odds = r["h_odds"]; bet_dir = f"{r['h_name']}（胜平）"
                 else:
-                    bet_odds = r["a_odds"]; bet_dir = f"{r['a_name']}（让0.5球）"
+                    bet_odds = r["a_odds"]; bet_dir = f"{r['a_name']}（胜平）"
             elif is_home or w1_home:
                 bet_odds = r["h_odds"]; bet_dir = r["h_name"]
             elif is_away:
@@ -613,9 +613,9 @@ with tab2:
             w1_home = any("W1↩主" in s for s in spots)
             if is_f2:
                 if any("F2主" in s for s in spots):
-                    save_odds = r["h_odds"]; save_dir = f"{r['h_name']}让0.5球"
+                    save_odds = r["h_odds"]; save_dir = f"{r['h_name']}胜平"
                 else:
-                    save_odds = r["a_odds"]; save_dir = f"{r['a_name']}让0.5球"
+                    save_odds = r["a_odds"]; save_dir = f"{r['a_name']}胜平"
             elif is_home or w1_home:
                 save_odds = r["h_odds"]; save_dir = r["h_name"]
             else:
