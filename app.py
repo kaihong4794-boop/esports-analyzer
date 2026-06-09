@@ -297,7 +297,7 @@ def calc_sweet_spot_stats(df):
 # App
 # ══════════════════════════════════════════════════════════════════════════════
 st.title("运动期望值分析器 🏆")
-tab1, tab2, tab3, tab4 = st.tabs(["❌ 电竞", "⚽ 足球", "🏀 篮球", "📋 记录"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["❌ 电竞", "⚽ 足球", "🏀 篮球", "⚾ 棒球", "📋 记录"])
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 1: 电竞
@@ -723,9 +723,171 @@ with tab3:
             st.success("✅ 记录已保存！")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 4: 记录
+# TAB 4: 棒球
 # ══════════════════════════════════════════════════════════════════════════════
 with tab4:
+    st.header("⚾ 棒球期望值分析器")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        bb_home_name = st.text_input("主队名字", "主队", key="bb_home_name")
+        bb_home_odds = st.number_input("主队赔率", min_value=1.01, value=1.90, step=0.01, key="bb_home_odds")
+    with col2:
+        bb_away_name = st.text_input("客队名字", "客队", key="bb_away_name")
+        bb_away_odds = st.number_input("客队赔率", min_value=1.01, value=1.90, step=0.01, key="bb_away_odds")
+
+    st.divider()
+    st.subheader("⚾ 先发投手战绩")
+    st.caption("填本季战绩，格式：胜场-负场（如 3-2）")
+    col3, col4 = st.columns(2)
+    with col3:
+        bb_home_pitcher = st.text_input(f"{bb_home_name} 投手", placeholder="如 3-2", key="bb_home_pitcher")
+    with col4:
+        bb_away_pitcher = st.text_input(f"{bb_away_name} 投手", placeholder="如 1-1", key="bb_away_pitcher")
+
+    def parse_pitcher(record_str):
+        """解析投手战绩，返回 (胜率, 总场数)"""
+        record_str = record_str.strip()
+        # 去掉 W/L 前缀
+        for prefix in ["W,", "L,", "W ", "L ", "W", "L"]:
+            if record_str.upper().startswith(prefix.upper()):
+                record_str = record_str[len(prefix):].strip()
+        if not re.match(r'^\d+-\d+$', record_str):
+            return None, 0
+        try:
+            w, l = map(int, record_str.split('-'))
+            total = w + l
+            return (w / total if total > 0 else 0.5), total
+        except:
+            return None, 0
+
+    def pitcher_weight(total_games):
+        """动态投手权重"""
+        if total_games <= 2:   return 0.10
+        elif total_games <= 4: return 0.15
+        elif total_games <= 7: return 0.20
+        else:                  return 0.25
+
+    st.divider()
+    st.subheader("📊 近期比赛记录（最近5场）")
+    st.caption("最新的填第1场，从新到旧")
+
+    col5, col6 = st.columns(2)
+    bb_home_vars, bb_away_vars = [], []
+
+    with col5:
+        st.markdown(f"**🏠 {bb_home_name}**")
+        for i in range(5):
+            label = "最新" if i == 0 else f"第{i+1}场"
+            result = st.selectbox(label, ["赢", "输"], key=f"bbh_{i}")
+            bb_home_vars.append(result)
+
+    with col6:
+        st.markdown(f"**✈️ {bb_away_name}**")
+        for i in range(5):
+            label = "最新" if i == 0 else f"第{i+1}场"
+            result = st.selectbox(label, ["赢", "输"], key=f"bba_{i}")
+            bb_away_vars.append(result)
+
+    def calc_baseball_wp(match_results, pitcher_str, is_home):
+        """计算棒球综合WP"""
+        # 队伍近期胜率（递减权重）
+        weights = [1.0, 0.9, 0.8, 0.7, 0.6]
+        total_w = win_w = 0
+        for i, r in enumerate(match_results):
+            w = weights[i]
+            total_w += w
+            win_w   += w if r == "赢" else 0
+        team_wr = win_w / total_w if total_w > 0 else 0.5
+
+        # 主场加成
+        if is_home:
+            team_wr = min(team_wr * 1.08, 0.99)
+
+        # 投手加成
+        p_wr, p_games = parse_pitcher(pitcher_str)
+        if p_wr is not None and p_games > 0:
+            p_w = pitcher_weight(p_games)
+            final_wr = (team_wr * (1 - p_w)) + (p_wr * p_w)
+        else:
+            final_wr = team_wr
+
+        return final_wr
+
+    if st.button("⚡ 计算", key="bb_calc", type="primary"):
+        h_wr = calc_baseball_wp(bb_home_vars, bb_home_pitcher, True)
+        a_wr = calc_baseball_wp(bb_away_vars, bb_away_pitcher, False)
+        h_ev = (h_wr * (bb_home_odds - 1) * 100) - ((1 - h_wr) * 100)
+        a_ev = (a_wr * (bb_away_odds - 1) * 100) - ((1 - a_wr) * 100)
+
+        # 投手信息解析（显示用）
+        h_p_wr, h_p_games = parse_pitcher(bb_home_pitcher)
+        a_p_wr, a_p_games = parse_pitcher(bb_away_pitcher)
+
+        st.session_state["bb_result"] = {
+            "h_wr": h_wr, "a_wr": a_wr, "h_ev": h_ev, "a_ev": a_ev,
+            "h_odds": bb_home_odds, "a_odds": bb_away_odds,
+            "h_name": bb_home_name, "a_name": bb_away_name,
+            "h_p_wr": h_p_wr, "h_p_games": h_p_games,
+            "a_p_wr": a_p_wr, "a_p_games": a_p_games,
+            "h_pitcher": bb_home_pitcher, "a_pitcher": bb_away_pitcher,
+        }
+
+    if "bb_result" in st.session_state:
+        r = st.session_state["bb_result"]
+        st.divider()
+
+        col7, col8 = st.columns(2)
+        with col7:
+            st.subheader(f"🏠 {r['h_name']}")
+            st.metric("综合胜率 (WP)", f"{r['h_wr']:.1%}")
+            st.metric("期望值 (EV)",   f"RM{r['h_ev']:.2f}")
+            st.metric("隐含概率",       f"{1/r['h_odds']:.1%}")
+            st.metric("优势差距",       f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
+            if r["h_p_wr"] is not None:
+                pw = pitcher_weight(r["h_p_games"])
+                st.caption(f"投手胜率 {r['h_p_wr']:.0%}（{r['h_p_games']}场，权重{pw:.0%}）")
+            if r["h_ev"] > 0: st.success("✅ 正期望值")
+            else:             st.error("❌ 负期望值")
+
+        with col8:
+            st.subheader(f"✈️ {r['a_name']}")
+            st.metric("综合胜率 (WP)", f"{r['a_wr']:.1%}")
+            st.metric("期望值 (EV)",   f"RM{r['a_ev']:.2f}")
+            st.metric("隐含概率",       f"{1/r['a_odds']:.1%}")
+            st.metric("优势差距",       f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
+            if r["a_p_wr"] is not None:
+                pw = pitcher_weight(r["a_p_games"])
+                st.caption(f"投手胜率 {r['a_p_wr']:.0%}（{r['a_p_games']}场，权重{pw:.0%}）")
+            if r["a_ev"] > 0: st.success("✅ 正期望值")
+            else:             st.error("❌ 负期望值")
+
+        st.divider()
+        st.caption("⚾ 棒球甜蜜点规律仍在收集中，先记录数据积累样本")
+
+        if st.button("💾 保存记录", key="bb_save"):
+            record = {
+                "日期": str(date.today()), "运动": "棒球",
+                "主队": r["h_name"], "客队": r["a_name"],
+                "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": "N/A",
+                "客队加权胜率": f"{r['a_wr']:.1%}",
+                "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A",
+                "客队期望值": f"{r['a_ev']:.2f}",
+                "主队隐含概率": f"{1/r['h_odds']:.1%}", "平局隐含概率": "N/A",
+                "客队隐含概率": f"{1/r['a_odds']:.1%}",
+                "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}", "平局优势差距": "N/A",
+                "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
+                "比赛结果": "", "甜蜜点": "",
+                "建议下注": "—",
+                "押注方向": "—", "投注结果": "",
+            }
+            save_to_sheet(record)
+            st.success("✅ 记录已保存！")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 5: 记录
+# ══════════════════════════════════════════════════════════════════════════════
+with tab5:
     st.header("📋 历史记录")
     if st.button("🔄 刷新记录", key="refresh"): st.rerun()
 
