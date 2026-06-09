@@ -138,6 +138,17 @@ def check_football_spots(h_wp, a_wp, h_ev, a_ev, h_impl=None, a_impl=None):
     if a_ev > 200:
         spots.append(f"W1↩主({a_ev:.0f})")
 
+    # ── FW↩ 冲突处理：F★/F1/F4 + W1↩ 同时触发 → 改买弱队吃球 ──────────────
+    has_strong = any(s in spots for s in ["F★主", "F★客", "F1主", "F1客", "F4主", "F4客"])
+    has_w1     = any("W1↩" in s for s in spots)
+    if has_strong and has_w1:
+        # 找出是哪队触发W1↩，弱队就是被逆买的那队
+        w1_spots = [s for s in spots if "W1↩" in s]
+        fw_dir   = "主" if any("W1↩主" in s for s in w1_spots) else "客"
+        # 移除冲突信号，换成FW↩
+        spots = [s for s in spots if "F★" not in s and "F1" not in s and "F4" not in s and "W1↩" not in s]
+        spots.append(f"FW↩{fw_dir}({a_ev:.0f})")
+
     return spots
 
 
@@ -146,10 +157,10 @@ def check_esports_spots(h_wp, a_wp, h_ev, a_ev):
     diff_h = h_wp - a_wp
     diff_a = a_wp - h_wp
 
-    # ── E3主 最强：WP≥55% + 差距≥10%（20场/90%）────────────────────────────
+    # ── E3主 最强：WP≥50% + 差距≥8%（放宽触发）────────────────────────────
     # 数据最多最稳！WP高且差距大 = 强队优势明显
     e3 = False
-    if h_wp >= 55 and diff_h >= 10:
+    if h_wp >= 50 and diff_h >= 8:
         spots.append(f"E3主(+{diff_h:.0f}%)")
         e3 = True
 
@@ -177,8 +188,8 @@ def check_esports_spots(h_wp, a_wp, h_ev, a_ev):
         else:             # 客队EV更低（赔率低）→ 押客队
             spots.append(f"EX客(EV差{ev_diff:.0f})")
 
-    # ── W1↩ 电竞逆向：主EV>80 → 反买押客队（8场/75%）────────────────────────
-    if h_ev > 80:
+    # ── W1↩ 电竞逆向：主EV>60 → 反买押客队（放宽触发）────────────────────────
+    if h_ev > 60:
         spots.append(f"W1↩客({h_ev:.0f})")
 
     return spots
@@ -206,6 +217,8 @@ def spot_display(spot):
     if spot.startswith("E3客"): return f"⚠️ E3客 电竞差距 {spot}（12场/67%，谨慎）"
     if spot.startswith("EX主"): return f"🔄 EX 电竞逆向 {spot} → 押主队（10场/80%）"
     if spot.startswith("EX客"): return f"🔄 EX 电竞逆向 {spot} → 押客队（10场/80%）"
+    if spot.startswith("FW↩主"): return f"🔄 FW↩ 信号冲突 → 买弱队吃球！押主队（逆向）{spot}"
+    if spot.startswith("FW↩客"): return f"🔄 FW↩ 信号冲突 → 买弱队吃球！押客队（逆向）{spot}"
     if "W1↩" in spot:           return f"🔄 {spot}（逆向反买！历史79%）"
     return spot
 
@@ -215,6 +228,7 @@ def get_spot_winrate(spot):
     if "F1" in spot:  return 0.875
     if "F2" in spot:  return 0.837
     if "F4" in spot:  return 0.73
+    if "FW↩" in spot: return 0.75
     if "E3主" in spot: return 0.90
     if "E3客" in spot: return 0.67
     if "E1" in spot:  return 0.80
@@ -254,6 +268,7 @@ def calc_sweet_spot_stats(df):
     spot_types = [
         ("F★", "F★ 足球精准"), ("F1", "F1 足球甜蜜点"),
         ("F2", "F2 足球让球"), ("F4", "F4 足球庄家信号"),
+        ("FW↩", "FW↩ 足球逆向吃球"),
         ("E★", "E★ 电竞最强"), ("E1", "E1 电竞精准"),
         ("E2", "E2 电竞甜蜜点"), ("EX", "EX 电竞逆向"),
         ("W1", "W1 逆向反买"),
@@ -518,7 +533,7 @@ with tab2:
         sweet_val = " | ".join(spots)
 
         for s in spots:
-            if "W1↩" in s:  st.warning(spot_display(s))
+            if "W1↩" in s or "FW↩" in s: st.warning(spot_display(s))
             elif "F★" in s: st.success(f"🏆 {spot_display(s)}")
             elif "F2" in s: st.info(spot_display(s))
             else:            st.success(spot_display(s))
@@ -552,11 +567,19 @@ with tab2:
         if spots:
             st.subheader("💰 分级注额建议")
             is_f2 = any("F2" in s for s in spots)
-            is_home = any("主" in s and "W1↩" not in s for s in spots)
-            is_away = any("客" in s and "W1↩" not in s for s in spots)
+            is_home = any("主" in s and "W1↩" not in s and "FW↩" not in s for s in spots)
+            is_away = any("客" in s and "W1↩" not in s and "FW↩" not in s for s in spots)
             w1_home = any("W1↩主" in s for s in spots)
+            fw_home = any("FW↩主" in s for s in spots)
+            fw_away = any("FW↩客" in s for s in spots)
 
-            if is_f2:
+            if fw_home or fw_away:
+                # FW↩：买弱队吃球
+                if fw_home:
+                    bet_odds = r["h_odds"]; bet_dir = f"{r['h_name']}（吃球）"
+                else:
+                    bet_odds = r["a_odds"]; bet_dir = f"{r['a_name']}（吃球）"
+            elif is_f2:
                 if any("F2主" in s for s in spots):
                     bet_odds = r["h_odds"]; bet_dir = f"{r['h_name']}（让0.5球）"
                 else:
