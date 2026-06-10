@@ -106,47 +106,56 @@ def score_to_esports_result(score_str):
 # ─── 甜蜜点检查 ───────────────────────────────────────────────────────────────
 def check_football_spots(h_wp, a_wp, h_ev, a_ev, h_impl=None, a_impl=None):
     spots = []
+    wp_gap_h = h_wp - a_wp  # 主队WP优势差距
 
-    # ── F★ 精准：WP≥55% + EV -50~-10（15场/86.7%）──────────────────────────
-    if h_wp >= 55 and -50 <= h_ev <= -10:
-        spots.append("F★主")
-    # ── F1：WP≥50% + EV -50~-20（16场/87.5%）───────────────────────────────
-    elif h_wp >= 50 and -50 <= h_ev <= -20:
-        spots.append("F1主")
+    # ── FA 新主力：主WP差≥30% + 主EV≥20 → 押主队独赢（85%，赔率1.60+）────────
+    if wp_gap_h >= 30 and h_ev >= 20:
+        spots.append("FA主")
 
-    if a_wp >= 55 and -50 <= a_ev <= -10:
-        spots.append("F★客")
-    elif a_wp >= 50 and -50 <= a_ev <= -20:
-        spots.append("F1客")
+    # ── FA客：客WP差≥30% + 客EV≥20 → 押客队独赢（85%）──────────────────────
+    if a_wp - h_wp >= 30 and a_ev >= 20:
+        spots.append("FA客")
 
-    # ── F2：WP 30~45% + EV -50~-15 → 押胜平（43场/83.7%）────────────────
-    # 赢+平=83.7%  纯平局率~34%，平局赔率高时可直接押平
-    if 30 <= h_wp <= 45 and -50 <= h_ev <= -15 and "F★主" not in spots and "F1主" not in spots:
+    # ── F2：WP 30~45% + EV -50~-15 → 押胜平（83%）───────────────────────────
+    if 30 <= h_wp <= 45 and -50 <= h_ev <= -15 and "FA主" not in spots:
         spots.append("F2主")
-    if 30 <= a_wp <= 45 and -50 <= a_ev <= -15 and "F★客" not in spots and "F1客" not in spots:
+    if 30 <= a_wp <= 45 and -50 <= a_ev <= -15 and "FA客" not in spots:
         spots.append("F2客")
 
-    # ── F4：WP差距<10% + 隐含概率差距>30%（15场/73%）────────────────────────
-    if h_impl is not None and a_impl is not None:
-        wp_gap   = abs(h_wp - a_wp)
-        impl_gap = abs(h_impl - a_impl)
-        if wp_gap < 10 and impl_gap > 30:
-            if h_impl > a_impl: spots.append("F4主")
-            else:               spots.append("F4客")
+    # ── F2A：WP 25~45% + EV -60~-10 → 押胜平（86%）──────────────────────────
+    if 25 <= h_wp <= 45 and -60 <= h_ev <= -10 and "FA主" not in spots and "F2主" not in spots:
+        spots.append("F2A主")
+    if 25 <= a_wp <= 45 and -60 <= a_ev <= -10 and "FA客" not in spots and "F2客" not in spots:
+        spots.append("F2A客")
 
-    # ── W1↩ 足球逆向：客队EV>200 → 押主队（14场/79%）───────────────────────
-    if a_ev > 200:
+    # ── F2B：WP≥50% + EV -50~0 → 押胜平（86%）───────────────────────────────
+    if h_wp >= 50 and -50 <= h_ev <= 0 and "FA主" not in spots:
+        spots.append("F2B主")
+    if a_wp >= 50 and -50 <= a_ev <= 0 and "FA客" not in spots:
+        spots.append("F2B客")
+
+    # ── FO 大球：两队WP都≥50% → 买大球>2.5（78%，赔率~1.85）────────────────
+    if h_wp >= 50 and a_wp >= 50:
+        spots.append("FO大球")
+
+    # ── FC 客EV高：客EV≥150 → 大球或BTTS（73%，赔率~1.85）──────────────────
+    # 客EV>400：大球（主队大胜进球多）
+    # 客EV 150-400：BTTS（双方互攻）
+    if a_ev >= 400:
+        spots.append(f"FC大球({a_ev:.0f})")
+    elif a_ev >= 150:
+        spots.append(f"FC-BTTS({a_ev:.0f})")
+
+    # ── W1↩ 足球逆向：客队EV>200 → 押主队独赢（79%）────────────────────────
+    if a_ev >= 200 and "FC大球" not in " ".join(spots) and "FC-BTTS" not in " ".join(spots):
         spots.append(f"W1↩主({a_ev:.0f})")
 
-    # ── FW↩ 冲突处理：F★/F1/F4 + W1↩ 同时触发 → 改买弱队吃球 ──────────────
-    has_strong = any(s in spots for s in ["F★主", "F★客", "F1主", "F1客", "F4主", "F4客"])
+    # ── FW↩ 冲突处理：FA + W1↩ 同时触发 → 买弱队吃球 ───────────────────────
+    has_strong = any("FA" in s for s in spots)
     has_w1     = any("W1↩" in s for s in spots)
     if has_strong and has_w1:
-        # 找出是哪队触发W1↩，弱队就是被逆买的那队
-        w1_spots = [s for s in spots if "W1↩" in s]
-        fw_dir   = "主" if any("W1↩主" in s for s in w1_spots) else "客"
-        # 移除冲突信号，换成FW↩
-        spots = [s for s in spots if "F★" not in s and "F1" not in s and "F4" not in s and "W1↩" not in s]
+        fw_dir = "主" if any("W1↩主" in s for s in spots) else "客"
+        spots  = [s for s in spots if "FA" not in s and "W1↩" not in s]
         spots.append(f"FW↩{fw_dir}({a_ev:.0f})")
 
     return spots
@@ -197,46 +206,51 @@ def check_esports_spots(h_wp, a_wp, h_ev, a_ev):
 
 # ─── 甜蜜点显示标签 ───────────────────────────────────────────────────────────
 SPOT_LABELS = {
-    "F★主": "🏆 F★ 足球精准甜蜜点 主队（15场/87%）",
-    "F★客": "🏆 F★ 足球精准甜蜜点 客队（15场/87%）",
-    "F1主": "🎯 F1 足球甜蜜点 主队（16场/87.5%）",
-    "F1客": "🎯 F1 足球甜蜜点 客队（16场/87.5%）",
-    "F2主": "🎯 F2 足球胜平 主队 → 押胜平！（43场/83.7%）",
-    "F2客": "🎯 F2 足球胜平 客队 → 押胜平！（43场/83.7%）",
-    "F4主": "🎯 F4 足球庄家信号 主队（15场/73%）",
-    "F4客": "🎯 F4 足球庄家信号 客队（15场/73%）",
-    "E1主": "🎯 E1 电竞甜蜜点 主队（15场/80%）",
-    "E1客": "🎯 E1 电竞甜蜜点 客队（15场/80%）",
-    "E2主": "🎯 E2 电竞次级 主队（历史83%）",
-    "E2客": "🎯 E2 电竞次级 客队（历史83%）",
+    "FA主":  "🏆 FA 新主力 主队独赢（85%，赔率1.60+）",
+    "FA客":  "🏆 FA 新主力 客队独赢（85%，赔率1.60+）",
+    "F2主":  "🎯 F2 足球胜平 主队 → 押胜平！（83%）",
+    "F2客":  "🎯 F2 足球胜平 客队 → 押胜平！（83%）",
+    "F2A主": "🎯 F2A 足球胜平宽版 主队 → 押胜平！（86%）",
+    "F2A客": "🎯 F2A 足球胜平宽版 客队 → 押胜平！（86%）",
+    "F2B主": "🎯 F2B 强队胜平 主队 → 押胜平！（86%）",
+    "F2B客": "🎯 F2B 强队胜平 客队 → 押胜平！（86%）",
+    "FO大球": "⚽ FO 大球甜蜜点 → 买大球>2.5！（78%，赔率~1.85）",
+    "E1主":  "🎯 E1 电竞甜蜜点 主队（15场/80%）",
+    "E1客":  "🎯 E1 电竞甜蜜点 客队（15场/80%）",
+    "E2主":  "🎯 E2 电竞次级 主队（历史83%）",
+    "E2客":  "🎯 E2 电竞次级 客队（历史83%）",
 }
 
 def spot_display(spot):
     if spot in SPOT_LABELS: return SPOT_LABELS[spot]
-    if spot.startswith("E3主"): return f"🏆 E3 电竞最强差距 {spot}（20场/90%）"
-    if spot.startswith("E3客"): return f"⚠️ E3客 电竞差距 {spot}（12场/67%，谨慎）"
-    if spot.startswith("EX主"): return f"🔄 EX 电竞逆向 {spot} → 押主队（10场/80%）"
-    if spot.startswith("EX客"): return f"🔄 EX 电竞逆向 {spot} → 押客队（10场/80%）"
-    if spot.startswith("FW↩主"): return f"🔄 FW↩ 信号冲突 → 买弱队吃球！押主队（逆向）{spot}"
-    if spot.startswith("FW↩客"): return f"🔄 FW↩ 信号冲突 → 买弱队吃球！押客队（逆向）{spot}"
-    if "W1↩" in spot:           return f"🔄 {spot}（逆向反买！历史79%）"
+    if spot.startswith("E3主"):    return f"🏆 E3 电竞最强差距 {spot}（90%）"
+    if spot.startswith("E3客"):    return f"⚠️ E3客 电竞差距 {spot}（67%，谨慎）"
+    if spot.startswith("EX主"):    return f"🔄 EX 电竞逆向 {spot} → 押主队（80%）"
+    if spot.startswith("EX客"):    return f"🔄 EX 电竞逆向 {spot} → 押客队（80%）"
+    if spot.startswith("FW↩主"):   return f"🔄 FW↩ 信号冲突 → 买弱队吃球！押主队{spot}"
+    if spot.startswith("FW↩客"):   return f"🔄 FW↩ 信号冲突 → 买弱队吃球！押客队{spot}"
+    if spot.startswith("FC大球"):  return f"⚽ FC 大球信号 {spot} → 买大球>2.5！（73%）"
+    if spot.startswith("FC-BTTS"): return f"⚽ FC BTTS信号 {spot} → 买双方都进球！（73%）"
+    if "W1↩" in spot:              return f"🔄 {spot}（逆向反买！79%）"
     return spot
 
 # ─── 资金管理 ─────────────────────────────────────────────────────────────────
 def get_spot_winrate(spot):
-    if "F★" in spot:  return 0.87
-    if "F1" in spot:  return 0.875
-    if "F2" in spot:  return 0.837
-    if "F4" in spot:  return 0.73
-    if "FW↩" in spot: return 0.75
+    if "FA" in spot:   return 0.85
+    if "F2B" in spot:  return 0.86
+    if "F2A" in spot:  return 0.86
+    if "F2" in spot:   return 0.837
+    if "FW↩" in spot:  return 0.75
+    if "FO" in spot:   return 0.78
+    if "FC" in spot:   return 0.73
     if "E3主" in spot: return 0.90
     if "E3客" in spot: return 0.67
-    if "E1" in spot:  return 0.80
-    if "E2" in spot:  return 0.83
-    if "EX" in spot:  return 0.80
-    if "W1↩" in spot: return 0.79
-    if "BW↩" in spot: return 0.83
-    if "B8" in spot:  return 0.67
+    if "E1" in spot:   return 0.80
+    if "E2" in spot:   return 0.83
+    if "EX" in spot:   return 0.80
+    if "W1↩" in spot:  return 0.79
+    if "BW↩" in spot:  return 0.83
+    if "B8" in spot:   return 0.67
     return 0.65
 
 def tiered_bet(odds):
@@ -268,14 +282,15 @@ def calc_sweet_spot_stats(df):
     sweet_df = df[df["甜蜜点"].astype(str).str.strip() != ""].copy()
     if sweet_df.empty: return None
     spot_types = [
-        ("F★", "F★ 足球精准"), ("F1", "F1 足球甜蜜点"),
-        ("F2", "F2 足球胜平"), ("F4", "F4 足球庄家信号"),
+        ("FA",  "FA 新主力独赢"),
+        ("F2B", "F2B 强队胜平"), ("F2A", "F2A 足球胜平宽版"),
+        ("F2",  "F2 足球胜平"),
+        ("FO",  "FO 大球>2.5"), ("FC",  "FC 大球/BTTS"),
         ("FW↩", "FW↩ 足球逆向吃球"),
-        ("E★", "E★ 电竞最强"), ("E1", "E1 电竞精准"),
-        ("E2", "E2 电竞甜蜜点"), ("EX", "EX 电竞逆向"),
-        ("W1", "W1 逆向反买"),
-        ("B8", "B8 棒球强队"),
-        ("BW↩", "BW↩ 棒球逆向"),
+        ("E3主","E3主 电竞最强"), ("E1", "E1 电竞精准"),
+        ("E2",  "E2 电竞甜蜜点"), ("EX", "EX 电竞逆向"),
+        ("W1",  "W1 逆向反买"),
+        ("B8",  "B8 棒球强队"), ("BW↩","BW↩ 棒球逆向"),
     ]
     results = []
     for key, label in spot_types:
@@ -537,12 +552,21 @@ with tab2:
         sweet_val = " | ".join(spots)
 
         for s in spots:
-            if "W1↩" in s or "FW↩" in s: st.warning(spot_display(s))
-            elif "F★" in s: st.success(f"🏆 {spot_display(s)}")
-            elif "F2" in s: st.info(spot_display(s))
-            else:            st.success(spot_display(s))
+            if "W1↩" in s or "FW↩" in s:  st.warning(spot_display(s))
+            elif "FA" in s:                 st.success(f"🏆 {spot_display(s)}")
+            elif "FO" in s or "FC" in s:    st.info(f"⚽ {spot_display(s)}")
+            elif "F2" in s:                 st.info(spot_display(s))
+            else:                           st.success(spot_display(s))
 
-        col9, col10, col11 = st.columns(3)
+        # 特别提示
+        if any("F2" in s for s in spots):
+            st.info("💡 F2触发：建议押**胜平**（赢或平都算赢）。")
+        if any("FO" in s for s in spots):
+            st.info("💡 FO触发：两队实力相当，建议买**大球>2.5**！（78%，赔率~1.85）")
+        if any("FC大球" in s for s in spots):
+            st.info("💡 FC触发：客队EV虚高，主队大胜概率高，建议买**大球>2.5**！（73%）")
+        if any("FC-BTTS" in s for s in spots):
+            st.info("💡 FC触发：客队EV虚高，双方互攻，建议买**BTTS双方都进球**！（73%）")
         with col9:
             st.subheader(f_home_name)
             st.metric("加权胜率 (WP)",     f"{r['h_wr']:.1%}")
@@ -563,14 +587,13 @@ with tab2:
             st.metric("隐含概率",           f"{1/r['a_odds']:.1%}")
             st.metric("优势差距 ⚠️仅参考", f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
 
-        # F2特别提示
-        if any("F2" in s for s in spots):
-            st.info("💡 F2触发：这队赢+平概率83%！建议押**胜平**（主队赢或平局都算赢）。")
+        col9, col10, col11 = st.columns(3)
 
         st.divider()
         if spots:
             st.subheader("💰 分级注额建议")
-            is_f2 = any("F2" in s for s in spots)
+            is_f2 = any("F2" in s for s in spots)  # 包含F2、F2A、F2B
+            is_fo  = any("FO" in s or "FC" in s for s in spots)
             is_home = any("主" in s and "W1↩" not in s and "FW↩" not in s for s in spots)
             is_away = any("客" in s and "W1↩" not in s and "FW↩" not in s for s in spots)
             w1_home = any("W1↩主" in s for s in spots)
@@ -578,13 +601,14 @@ with tab2:
             fw_away = any("FW↩客" in s for s in spots)
 
             if fw_home or fw_away:
-                # FW↩：买弱队吃球
                 if fw_home:
                     bet_odds = r["h_odds"]; bet_dir = f"{r['h_name']}（吃球）"
                 else:
                     bet_odds = r["a_odds"]; bet_dir = f"{r['a_name']}（吃球）"
+            elif is_fo:
+                bet_odds = 1.85; bet_dir = "大球>2.5 或 BTTS（请查赔率）"
             elif is_f2:
-                if any("F2主" in s for s in spots):
+                if any("F2" in s and "主" in s for s in spots):
                     bet_odds = r["h_odds"]; bet_dir = f"{r['h_name']}（胜平）"
                 else:
                     bet_odds = r["a_odds"]; bet_dir = f"{r['a_name']}（胜平）"
