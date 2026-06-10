@@ -573,27 +573,6 @@ with tab2:
         if any("FC-BTTS" in s for s in spots):
             st.info("💡 FC触发：客队EV虚高，双方互攻，建议买**BTTS双方都进球**！（73%）")
 
-        col9, col10, col11 = st.columns(3)
-        with col9:
-            st.subheader(f_home_name)
-            st.metric("加权胜率 (WP)",     f"{r['h_wr']:.1%}")
-            st.metric("期望值 (EV)",       f"RM{r['h_ev']:.2f}")
-            st.metric("隐含概率",           f"{1/r['h_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
-        with col10:
-            st.subheader("平局")
-            st.metric("平局概率",           f"{r['draw_prob']:.1%}")
-            st.metric("期望值 (EV)",       f"RM{r['d_ev']:.2f}")
-            st.metric("隐含概率",           f"{1/r['d_odds']:.1%}")
-            if r["d_ev"] > 0: st.success("✅ 正期望值")
-            else:             st.error("❌ 负期望值")
-        with col11:
-            st.subheader(f_away_name)
-            st.metric("加权胜率 (WP)",     f"{r['a_wr']:.1%}")
-            st.metric("期望值 (EV)",       f"RM{r['a_ev']:.2f}")
-            st.metric("隐含概率",           f"{1/r['a_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['a_wr'] - 1/r['a_opts']:.1%}" if False else f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
-
         st.divider()
         if spots:
             st.subheader("💰 分级注额建议")
