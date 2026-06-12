@@ -38,7 +38,8 @@ def load_from_sheet():
         sheet = get_sheet()
         data = sheet.get_all_records()
         return pd.DataFrame(data) if data else pd.DataFrame(columns=HEADERS)
-    except:
+    except Exception as e:
+        st.session_state["_load_sheet_error"] = str(e)
         return pd.DataFrame(columns=HEADERS)
 
 # ─── 相似比赛匹配 ──────────────────────────────────────────────────────────────
@@ -303,6 +304,8 @@ with tab1:
         similar = find_similar_matches(history_df, "电竞", a_impl=a_impl, top_n=10)
 
         with st.expander("🔧 调试信息（排查用）"):
+            if "_load_sheet_error" in st.session_state:
+                st.error(f"读取Sheets出错: {st.session_state['_load_sheet_error']}")
             st.write("Sheets总行数:", len(history_df))
             if not history_df.empty and "运动" in history_df.columns:
                 st.write("「运动」列的所有取值:", history_df["运动"].unique().tolist())
