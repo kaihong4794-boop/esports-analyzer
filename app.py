@@ -302,6 +302,19 @@ with tab1:
         history_df = load_from_sheet()
         similar = find_similar_matches(history_df, "电竞", a_impl=a_impl, top_n=10)
 
+        with st.expander("🔧 调试信息（排查用）"):
+            st.write("Sheets总行数:", len(history_df))
+            if not history_df.empty and "运动" in history_df.columns:
+                st.write("「运动」列的所有取值:", history_df["运动"].unique().tolist())
+                sub = history_df[history_df["运动"] == "电竞"]
+                st.write("「运动」=='电竞' 的行数:", len(sub))
+                if not sub.empty:
+                    st.write("这些行的「比赛结果」和「客队隐含概率」示例:")
+                    st.dataframe(sub[["日期","主队","客队","客队隐含概率","比赛结果"]].tail(10),
+                                 use_container_width=True, hide_index=True)
+            else:
+                st.write("history_df为空或没有「运动」列！columns:", history_df.columns.tolist())
+
         if similar:
             summary = summarize_similar_matches(similar, r["h_name"], r["a_name"])
             if summary:
