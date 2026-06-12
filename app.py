@@ -117,35 +117,6 @@ def find_similar_matches(df, sport, a_impl, top_n=10):
     rows.sort(key=lambda x: x["距离"])
     return rows[:top_n]
 
-def summarize_similar_matches(matches, h_name="主队", a_name="客队"):
-    """
-    对相似比赛列表做结果分布统计（主胜/平/客胜，按比分判断）
-    """
-    if not matches:
-        return None
-    h_win = draw = a_win = 0
-    unknown = 0
-    for m in matches:
-        score = str(m["比赛结果"]).strip()
-        mm = re.match(r"^(\d+)\s*-\s*(\d+)$", score)
-        if not mm:
-            unknown += 1
-            continue
-        hs, as_ = int(mm.group(1)), int(mm.group(2))
-        if hs > as_: h_win += 1
-        elif hs < as_: a_win += 1
-        else: draw += 1
-    n = h_win + draw + a_win
-    if n == 0:
-        return None
-    return {
-        "样本数": n, "未知结果": unknown,
-        f"{h_name}胜": f"{h_win}/{n} ({h_win/n:.0%})",
-        "平局": f"{draw}/{n} ({draw/n:.0%})",
-        f"{a_name}胜": f"{a_win}/{n} ({a_win/n:.0%})",
-        f"{h_name}不败": f"{h_win+draw}/{n} ({(h_win+draw)/n:.0%})",
-        f"{a_name}不败": f"{a_win+draw}/{n} ({(a_win+draw)/n:.0%})",
-    }
 
 # ─── 比赛结果权重 ──────────────────────────────────────────────────────────────
 football_results = {
@@ -309,40 +280,16 @@ with tab1:
         history_df = load_from_sheet()
         similar = find_similar_matches(history_df, "电竞", a_impl=a_impl, top_n=10)
 
-        with st.expander("🔧 调试信息（排查用）"):
-            if "_load_sheet_error" in st.session_state:
-                st.error(f"读取Sheets出错: {st.session_state['_load_sheet_error']}")
-            st.write("Sheets总行数:", len(history_df))
-            if not history_df.empty and "运动" in history_df.columns:
-                st.write("「运动」列的所有取值:", history_df["运动"].unique().tolist())
-                sub = history_df[history_df["运动"] == "电竞"]
-                st.write("「运动」=='电竞' 的行数:", len(sub))
-                if not sub.empty:
-                    st.write("这些行的「比赛结果」和「客队隐含概率」示例:")
-                    st.dataframe(sub[["日期","主队","客队","客队隐含概率","比赛结果"]].tail(10),
-                                 use_container_width=True, hide_index=True)
-            else:
-                st.write("history_df为空或没有「运动」列！columns:", history_df.columns.tolist())
-
         if similar:
-            summary = summarize_similar_matches(similar, r["h_name"], r["a_name"])
-            if summary:
-                sc1, sc2, sc3 = st.columns(3)
-                sc1.metric(f"{r['h_name']}胜", summary[f"{r['h_name']}胜"])
-                sc2.metric("平局", summary["平局"])
-                sc3.metric(f"{r['a_name']}胜", summary[f"{r['a_name']}胜"])
-                st.caption(f"共{summary['样本数']}场可用样本" +
-                           (f"（另有{summary['未知结果']}场结果格式无法识别）" if summary["未知结果"] else ""))
-
-            with st.expander("查看相似比赛明细"):
-                show_df = pd.DataFrame(similar)[[
-                    "日期","主队","客队","主队WP","客队WP","主队EV","客队EV",
-                    "主队隐含概率","客队隐含概率","主队优势差距","客队优势差距",
-                    "比赛结果","距离"
-                ]]
-                st.dataframe(show_df, use_container_width=True, hide_index=True)
+            show_df = pd.DataFrame(similar)[[
+                "日期","主队","客队","主队WP","客队WP","主队EV","客队EV",
+                "主队隐含概率","客队隐含概率","主队优势差距","客队优势差距",
+                "比赛结果","距离"
+            ]]
+            st.dataframe(show_df, use_container_width=True, hide_index=True)
         else:
             st.info("暂无足够的历史数据（需要有比赛结果的记录）")
+
 
         st.divider()
         if st.button("💾 保存记录", key="e_save"):
@@ -486,25 +433,12 @@ with tab2:
         similar = find_similar_matches(history_df, "足球", a_impl=a_impl, top_n=10)
 
         if similar:
-            summary = summarize_similar_matches(similar, f_home_name, f_away_name)
-            if summary:
-                sc1, sc2, sc3 = st.columns(3)
-                sc1.metric(f"{f_home_name}胜", summary[f"{f_home_name}胜"])
-                sc2.metric("平局", summary["平局"])
-                sc3.metric(f"{f_away_name}胜", summary[f"{f_away_name}胜"])
-                sc4, sc5 = st.columns(2)
-                sc4.metric(f"{f_home_name}不败", summary[f"{f_home_name}不败"])
-                sc5.metric(f"{f_away_name}不败", summary[f"{f_away_name}不败"])
-                st.caption(f"共{summary['样本数']}场可用样本" +
-                           (f"（另有{summary['未知结果']}场结果格式无法识别）" if summary["未知结果"] else ""))
-
-            with st.expander("查看相似比赛明细"):
-                show_df = pd.DataFrame(similar)[[
-                    "日期","主队","客队","主队WP","客队WP","主队EV","客队EV",
-                    "主队隐含概率","客队隐含概率","主队优势差距","客队优势差距",
-                    "比赛结果","距离"
-                ]]
-                st.dataframe(show_df, use_container_width=True, hide_index=True)
+            show_df = pd.DataFrame(similar)[[
+                "日期","主队","客队","主队WP","客队WP","主队EV","客队EV",
+                "主队隐含概率","客队隐含概率","主队优势差距","客队优势差距",
+                "比赛结果","距离"
+            ]]
+            st.dataframe(show_df, use_container_width=True, hide_index=True)
         else:
             st.info("暂无足够的历史数据（需要有比赛结果的记录）")
 
@@ -779,21 +713,12 @@ with tab4:
         similar = find_similar_matches(history_df, "棒球", a_impl=a_impl, top_n=10)
 
         if similar:
-            summary = summarize_similar_matches(similar, r["h_name"], r["a_name"])
-            if summary:
-                sc1, sc2 = st.columns(2)
-                sc1.metric(f"{r['h_name']}胜", summary[f"{r['h_name']}胜"])
-                sc2.metric(f"{r['a_name']}胜", summary[f"{r['a_name']}胜"])
-                st.caption(f"共{summary['样本数']}场可用样本" +
-                           (f"（另有{summary['未知结果']}场结果格式无法识别）" if summary["未知结果"] else ""))
-
-            with st.expander("查看相似比赛明细"):
-                show_df = pd.DataFrame(similar)[[
-                    "日期","主队","客队","主队WP","客队WP","主队EV","客队EV",
-                    "主队隐含概率","客队隐含概率","主队优势差距","客队优势差距",
-                    "比赛结果","距离"
-                ]]
-                st.dataframe(show_df, use_container_width=True, hide_index=True)
+            show_df = pd.DataFrame(similar)[[
+                "日期","主队","客队","主队WP","客队WP","主队EV","客队EV",
+                "主队隐含概率","客队隐含概率","主队优势差距","客队优势差距",
+                "比赛结果","距离"
+            ]]
+            st.dataframe(show_df, use_container_width=True, hide_index=True)
         else:
             st.info("暂无足够的历史数据（需要有比赛结果的记录）")
 
