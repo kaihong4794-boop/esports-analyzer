@@ -36,8 +36,14 @@ def save_to_sheet(record):
 def load_from_sheet():
     try:
         sheet = get_sheet()
-        data = sheet.get_all_records(expected_headers=HEADERS)
-        return pd.DataFrame(data) if data else pd.DataFrame(columns=HEADERS)
+        actual_headers = sheet.row_values(1)
+        data = sheet.get_all_records(expected_headers=actual_headers)
+        df = pd.DataFrame(data) if data else pd.DataFrame(columns=HEADERS)
+        # 确保所有HEADERS列都存在，缺的补空字符串
+        for h in HEADERS:
+            if h not in df.columns:
+                df[h] = ""
+        return df
     except Exception as e:
         st.session_state["_load_sheet_error"] = str(e)
         return pd.DataFrame(columns=HEADERS)
