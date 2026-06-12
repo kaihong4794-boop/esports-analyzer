@@ -41,6 +41,111 @@ def load_from_sheet():
     except:
         return pd.DataFrame(columns=HEADERS)
 
+# ─── 相似比赛匹配 ──────────────────────────────────────────────────────────────
+def _parse_pct(val):
+    """把 '45.2%' / '+12.3%' / 45.2 这种格式转成 float（百分比数值，不除100）"""
+    if val is None or val == "":
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    s = str(val).strip().replace("%", "").replace("+", "")
+    try:
+        return float(s)
+    except:
+        return None
+
+def _parse_ev(val):
+    if val is None or val == "":
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    try:
+        return float(str(val).strip())
+    except:
+        return None
+
+def find_similar_matches(df, sport, h_wp, a_wp, h_ev, a_ev, top_n=10,
+                          wp_weight=1.0, ev_weight=0.3):
+    """
+    在历史数据df中找出与新比赛(h_wp, a_wp, h_ev, a_ev)最相似的场次。
+    只比较同一运动(sport)、且有比赛结果记录的场次。
+    返回: list of dicts，每个包含原始行信息 + 计算出的距离
+    """
+    if df.empty:
+        return []
+
+    candidates = df[df["运动"] == sport].copy()
+    if candidates.empty:
+        return []
+
+    rows = []
+    for _, row in candidates.iterrows():
+        result = str(row.get("比赛结果", "")).strip()
+        if not result or result in ("nan", "None", "—", "CANCEL"):
+            continue  # 没有结果的场次不能用来参考
+
+        c_h_wp = _parse_pct(row.get("主队加权胜率"))
+        c_a_wp = _parse_pct(row.get("客队加权胜率"))
+        c_h_ev = _parse_ev(row.get("主队期望值"))
+        c_a_ev = _parse_ev(row.get("客队期望值"))
+
+        if None in (c_h_wp, c_a_wp, c_h_ev, c_a_ev):
+            continue
+
+        distance = (
+            abs(c_h_wp - h_wp) * wp_weight +
+            abs(c_a_wp - a_wp) * wp_weight +
+            abs(c_h_ev - h_ev) * ev_weight +
+            abs(c_a_ev - a_ev) * ev_weight
+        )
+
+        rows.append({
+            "距离": distance,
+            "日期": row.get("日期", ""),
+            "主队": row.get("主队", ""),
+            "客队": row.get("客队", ""),
+            "主队WP": c_h_wp, "客队WP": c_a_wp,
+            "主队EV": c_h_ev, "客队EV": c_a_ev,
+            "主队隐含概率": row.get("主队隐含概率", ""),
+            "客队隐含概率": row.get("客队隐含概率", ""),
+            "主队优势差距": row.get("主队优势差距", ""),
+            "客队优势差距": row.get("客队优势差距", ""),
+            "比赛结果": result,
+        })
+
+    rows.sort(key=lambda x: x["距离"])
+    return rows[:top_n]
+
+def summarize_similar_matches(matches, h_name="主队", a_name="客队"):
+    """
+    对相似比赛列表做结果分布统计（主胜/平/客胜，按比分判断）
+    """
+    if not matches:
+        return None
+    h_win = draw = a_win = 0
+    unknown = 0
+    for m in matches:
+        score = str(m["比赛结果"]).strip()
+        mm = re.match(r"^(\d+)\s*-\s*(\d+)$", score)
+        if not mm:
+            unknown += 1
+            continue
+        hs, as_ = int(mm.group(1)), int(mm.group(2))
+        if hs > as_: h_win += 1
+        elif hs < as_: a_win += 1
+        else: draw += 1
+    n = h_win + draw + a_win
+    if n == 0:
+        return None
+    return {
+        "样本数": n, "未知结果": unknown,
+        f"{h_name}胜": f"{h_win}/{n} ({h_win/n:.0%})",
+        "平局": f"{draw}/{n} ({draw/n:.0%})",
+        f"{a_name}胜": f"{a_win}/{n} ({a_win/n:.0%})",
+        f"{h_name}不败": f"{h_win+draw}/{n} ({(h_win+draw)/n:.0%})",
+        f"{a_name}不败": f"{a_win+draw}/{n} ({(a_win+draw)/n:.0%})",
+    }
+
 # ─── 比赛结果权重 ──────────────────────────────────────────────────────────────
 football_results = {
     "🏠 主场大胜": {"weight": 1.0,  "is_win": 1, "is_draw": 0, "is_home": True},
@@ -102,200 +207,6 @@ def score_to_esports_result(score_str):
     elif a > b:  key = f"{a}-{b} 赢"
     else:        key = f"{a}-{b} 输"
     return key if key in score_weights_esports else None
-
-# ─── 甜蜜点检查 ───────────────────────────────────────────────────────────────
-def check_football_spots(h_wp, a_wp, h_ev, a_ev, h_impl=None, a_impl=None):
-    spots = []
-
-    # ── F★ 精准：WP≥55% + EV -50~-10（15场/86.7%）──────────────────────────
-    if h_wp >= 55 and -50 <= h_ev <= -10:
-        spots.append("F★主")
-    # ── F1：WP≥50% + EV -50~-20（16场/87.5%）───────────────────────────────
-    elif h_wp >= 50 and -50 <= h_ev <= -20:
-        spots.append("F1主")
-
-    if a_wp >= 55 and -50 <= a_ev <= -10:
-        spots.append("F★客")
-    elif a_wp >= 50 and -50 <= a_ev <= -20:
-        spots.append("F1客")
-
-    # ── F2：WP 30~45% + EV -50~-15 → 押胜平（43场/83.7%）────────────────
-    # 赢+平=83.7%  纯平局率~34%，平局赔率高时可直接押平
-    if 30 <= h_wp <= 45 and -50 <= h_ev <= -15 and "F★主" not in spots and "F1主" not in spots:
-        spots.append("F2主")
-    if 30 <= a_wp <= 45 and -50 <= a_ev <= -15 and "F★客" not in spots and "F1客" not in spots:
-        spots.append("F2客")
-
-    # ── F4：WP差距<10% + 隐含概率差距>30%（15场/73%）────────────────────────
-    if h_impl is not None and a_impl is not None:
-        wp_gap   = abs(h_wp - a_wp)
-        impl_gap = abs(h_impl - a_impl)
-        if wp_gap < 10 and impl_gap > 30:
-            if h_impl > a_impl: spots.append("F4主")
-            else:               spots.append("F4客")
-
-    # ── W1↩ 足球逆向：客队EV>200 → 押主队（14场/79%）───────────────────────
-    if a_ev > 200:
-        spots.append(f"W1↩主({a_ev:.0f})")
-
-    # ── FW↩ 冲突处理：F★/F1/F4 + W1↩ 同时触发 → 改买弱队吃球 ──────────────
-    has_strong = any(s in spots for s in ["F★主", "F★客", "F1主", "F1客", "F4主", "F4客"])
-    has_w1     = any("W1↩" in s for s in spots)
-    if has_strong and has_w1:
-        # 找出是哪队触发W1↩，弱队就是被逆买的那队
-        w1_spots = [s for s in spots if "W1↩" in s]
-        fw_dir   = "主" if any("W1↩主" in s for s in w1_spots) else "客"
-        # 移除冲突信号，换成FW↩
-        spots = [s for s in spots if "F★" not in s and "F1" not in s and "F4" not in s and "W1↩" not in s]
-        spots.append(f"FW↩{fw_dir}({a_ev:.0f})")
-
-    return spots
-
-
-def check_esports_spots(h_wp, a_wp, h_ev, a_ev):
-    spots = []
-    diff_h = h_wp - a_wp
-    diff_a = a_wp - h_wp
-
-    # ── E3主 最强：WP≥50% + 差距≥8%（放宽触发）────────────────────────────
-    # 数据最多最稳！WP高且差距大 = 强队优势明显
-    e3 = False
-    if h_wp >= 50 and diff_h >= 8:
-        spots.append(f"E3主(+{diff_h:.0f}%)")
-        e3 = True
-
-    # ── E1：WP≥60% + EV -40~0（15场/80%，E3优先）───────────────────────────
-    if not e3:
-        if h_wp >= 60 and -40 <= h_ev <= 0:
-            spots.append("E1主")
-        if a_wp >= 60 and -40 <= a_ev <= 0:
-            spots.append("E1客")
-
-    # ── E2：WP≥55% + EV -40~-10（E3/E1优先）────────────────────────────────
-    if not any("E3" in s or "E1" in s for s in spots):
-        if h_wp >= 55 and -40 <= h_ev <= -10:
-            spots.append("E2主")
-        if a_wp >= 55 and -40 <= a_ev <= -10:
-            spots.append("E2客")
-
-    # ── EX 逆向：WP差距<10% + EV差距>50 → 押低EV方（10场/80%）─────────────
-    # 逆向逻辑：两队实力接近，但庄家偷偷偏向低赔率那队
-    wp_diff = abs(h_wp - a_wp)
-    ev_diff = abs(h_ev - a_ev)
-    if wp_diff < 10 and ev_diff > 50 and not spots:
-        if h_ev < a_ev:  # 主队EV更低（赔率低）→ 押主队
-            spots.append(f"EX主(EV差{ev_diff:.0f})")
-        else:             # 客队EV更低（赔率低）→ 押客队
-            spots.append(f"EX客(EV差{ev_diff:.0f})")
-
-    # ── W1↩ 电竞逆向：主EV>60 → 反买押客队（放宽触发）────────────────────────
-    if h_ev > 60:
-        spots.append(f"W1↩客({h_ev:.0f})")
-
-    return spots
-
-
-# ─── 甜蜜点显示标签 ───────────────────────────────────────────────────────────
-SPOT_LABELS = {
-    "F★主": "🏆 F★ 足球精准甜蜜点 主队（15场/87%）",
-    "F★客": "🏆 F★ 足球精准甜蜜点 客队（15场/87%）",
-    "F1主": "🎯 F1 足球甜蜜点 主队（16场/87.5%）",
-    "F1客": "🎯 F1 足球甜蜜点 客队（16场/87.5%）",
-    "F2主": "🎯 F2 足球胜平 主队 → 押胜平！（43场/83.7%）",
-    "F2客": "🎯 F2 足球胜平 客队 → 押胜平！（43场/83.7%）",
-    "F4主": "🎯 F4 足球庄家信号 主队（15场/73%）",
-    "F4客": "🎯 F4 足球庄家信号 客队（15场/73%）",
-    "E1主": "🎯 E1 电竞甜蜜点 主队（15场/80%）",
-    "E1客": "🎯 E1 电竞甜蜜点 客队（15场/80%）",
-    "E2主": "🎯 E2 电竞次级 主队（历史83%）",
-    "E2客": "🎯 E2 电竞次级 客队（历史83%）",
-}
-
-def spot_display(spot):
-    if spot in SPOT_LABELS: return SPOT_LABELS[spot]
-    if spot.startswith("E3主"): return f"🏆 E3 电竞最强差距 {spot}（20场/90%）"
-    if spot.startswith("E3客"): return f"⚠️ E3客 电竞差距 {spot}（12场/67%，谨慎）"
-    if spot.startswith("EX主"): return f"🔄 EX 电竞逆向 {spot} → 押主队（10场/80%）"
-    if spot.startswith("EX客"): return f"🔄 EX 电竞逆向 {spot} → 押客队（10场/80%）"
-    if spot.startswith("FW↩主"): return f"🔄 FW↩ 信号冲突 → 买弱队吃球！押主队（逆向）{spot}"
-    if spot.startswith("FW↩客"): return f"🔄 FW↩ 信号冲突 → 买弱队吃球！押客队（逆向）{spot}"
-    if "W1↩" in spot:           return f"🔄 {spot}（逆向反买！历史79%）"
-    return spot
-
-# ─── 资金管理 ─────────────────────────────────────────────────────────────────
-def get_spot_winrate(spot):
-    if "F★" in spot:  return 0.87
-    if "F1" in spot:  return 0.875
-    if "F2" in spot:  return 0.837
-    if "F4" in spot:  return 0.73
-    if "FW↩" in spot: return 0.75
-    if "E3主" in spot: return 0.90
-    if "E3客" in spot: return 0.67
-    if "E1" in spot:  return 0.80
-    if "E2" in spot:  return 0.83
-    if "EX" in spot:  return 0.80
-    if "W1↩" in spot: return 0.79
-    if "BW↩" in spot: return 0.83
-    if "B8" in spot:  return 0.67
-    return 0.65
-
-def tiered_bet(odds):
-    if odds < 1.50:   return 30
-    elif odds < 1.80: return 50
-    elif odds < 2.21: return 70
-    else:             return 100
-
-def kelly_suggestion(spots, odds, bankroll=1000):
-    if not spots: return None
-    best_wr = max(get_spot_winrate(s) for s in spots)
-    bet = tiered_bet(odds)
-    break_even = 1 / odds * 100
-    expected_positive = best_wr * 100 > break_even
-    if odds < 1.50:   tier = "低赔率档（<1.50）"
-    elif odds < 1.80: tier = "标准档（1.50~1.79）"
-    elif odds < 2.21: tier = "高赔率档（1.80~2.20）"
-    else:             tier = "超高赔率档（>2.20）"
-    return {
-        "胜率": f"{best_wr*100:.0f}%",
-        "建议下注": bet,
-        "盈亏平衡": f"{break_even:.1f}%",
-        "正期望": expected_positive,
-        "档位": tier,
-    }
-
-# ─── 甜蜜点统计 ───────────────────────────────────────────────────────────────
-def calc_sweet_spot_stats(df):
-    sweet_df = df[df["甜蜜点"].astype(str).str.strip() != ""].copy()
-    if sweet_df.empty: return None
-    spot_types = [
-        ("F★", "F★ 足球精准"), ("F1", "F1 足球甜蜜点"),
-        ("F2", "F2 足球胜平"), ("F4", "F4 足球庄家信号"),
-        ("FW↩", "FW↩ 足球逆向吃球"),
-        ("E★", "E★ 电竞最强"), ("E1", "E1 电竞精准"),
-        ("E2", "E2 电竞甜蜜点"), ("EX", "EX 电竞逆向"),
-        ("W1", "W1 逆向反买"),
-        ("B8", "B8 棒球强队"),
-        ("BW↩", "BW↩ 棒球逆向"),
-    ]
-    results = []
-    for key, label in spot_types:
-        subset = sweet_df[sweet_df["甜蜜点"].astype(str).str.contains(key, na=False)]
-        if subset.empty: continue
-        total = len(subset)
-        wins = losses = refunds = 0
-        for _, row in subset.iterrows():
-            br = str(row.get("投注结果", "")).strip()
-            if br in ["✅ 赢", "赢"]:         wins    += 1
-            elif br in ["❌ 输", "输"]:        losses  += 1
-            elif br in ["🔄 退水", "退水"]:    refunds += 1
-        settled  = wins + losses + refunds
-        win_rate = wins / (wins + losses) * 100 if (wins + losses) > 0 else None
-        results.append({
-            "甜蜜点": label, "总记录": total, "已结算": settled,
-            "赢": wins, "输": losses, "退水": refunds,
-            "命中率": f"{win_rate:.1f}%" if win_rate is not None else "—",
-        })
-    return results
 
 # ══════════════════════════════════════════════════════════════════════════════
 # App
@@ -370,62 +281,60 @@ with tab1:
     if "e_result" in st.session_state:
         r = st.session_state["e_result"]
         st.divider()
-        spots = check_esports_spots(r["h_wr"]*100, r["a_wr"]*100, r["h_ev"], r["a_ev"])
-        sweet_combined = " | ".join(spots)
-        for s in spots:
-            if "W1↩" in s or "EX" in s: st.warning(spot_display(s))
-            elif "E★" in s:              st.success(f"🏆 {spot_display(s)}")
-            else:                         st.success(spot_display(s))
+        h_impl = (1/r["h_odds"])*100
+        a_impl = (1/r["a_odds"])*100
+        h_adv = r["h_wr"]*100 - h_impl
+        a_adv = r["a_wr"]*100 - a_impl
 
         col5, col6 = st.columns(2)
         with col5:
             st.subheader(r["h_name"])
-            st.metric("加权胜率 (WP)",     f"{r['h_wr']:.1%}")
-            st.metric("期望值 (EV)",       f"RM{r['h_ev']:.2f}")
-            st.metric("隐含概率",           f"{1/r['h_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
-            if not spots:
-                if r["h_ev"] > 0: st.success("✅ 正期望值")
-                else:             st.error("❌ 负期望值")
+            st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}")
+            st.metric("期望值 (EV)",   f"RM{r['h_ev']:.2f}")
+            st.metric("隐含概率",       f"{h_impl:.1f}%")
+            st.metric("优势差距",       f"{h_adv:+.1f}%")
         with col6:
             st.subheader(r["a_name"])
-            st.metric("加权胜率 (WP)",     f"{r['a_wr']:.1%}")
-            st.metric("期望值 (EV)",       f"RM{r['a_ev']:.2f}")
-            st.metric("隐含概率",           f"{1/r['a_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
-            if not spots:
-                if r["a_ev"] > 0: st.success("✅ 正期望值")
-                else:             st.error("❌ 负期望值")
+            st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}")
+            st.metric("期望值 (EV)",   f"RM{r['a_ev']:.2f}")
+            st.metric("隐含概率",       f"{a_impl:.1f}%")
+            st.metric("优势差距",       f"{a_adv:+.1f}%")
 
+        # ── 相似历史比赛 ──────────────────────────────────────────────────
         st.divider()
-        if spots:
-            st.subheader("💰 分级注额建议")
-            bet_on_home = any(("主" in s or "E★主" in s or "E1主" in s or "E2主" in s or "EX主" in s) and "W1↩" not in s for s in spots)
-            w1_away = any("W1↩客" in s for s in spots)
-            if bet_on_home and not w1_away:
-                bet_odds = r["h_odds"]; bet_dir = r["h_name"]
-            else:
-                bet_odds = r["a_odds"]; bet_dir = r["a_name"]
-            kelly = kelly_suggestion(spots, bet_odds)
-            if kelly:
-                ck1, ck2, ck3 = st.columns(3)
-                ck1.metric("建议下注", f"{kelly['建议下注']}块")
-                ck2.metric("历史胜率", kelly["胜率"])
-                ck3.metric("盈亏平衡", kelly["盈亏平衡"])
-                if kelly["正期望"]:
-                    st.success(f"✅ 建议押 **{bet_dir}**，下注 **{kelly['建议下注']}块**（{kelly['档位']}）")
-                else:
-                    st.warning("⚠️ 赔率太低，期望值为负，谨慎下注！")
+        st.subheader("📊 相似历史比赛参考")
+        st.caption("根据WP和EV找出历史上最接近的10场比赛，仅供参考，不构成下注建议")
+
+        history_df = load_from_sheet()
+        similar = find_similar_matches(
+            history_df, "电竞",
+            h_wp=r["h_wr"]*100, a_wp=r["a_wr"]*100,
+            h_ev=r["h_ev"], a_ev=r["a_ev"],
+            top_n=10,
+        )
+
+        if similar:
+            summary = summarize_similar_matches(similar, r["h_name"], r["a_name"])
+            if summary:
+                sc1, sc2, sc3 = st.columns(3)
+                sc1.metric(f"{r['h_name']}胜", summary[f"{r['h_name']}胜"])
+                sc2.metric("平局", summary["平局"])
+                sc3.metric(f"{r['a_name']}胜", summary[f"{r['a_name']}胜"])
+                st.caption(f"共{summary['样本数']}场可用样本" +
+                           (f"（另有{summary['未知结果']}场结果格式无法识别）" if summary["未知结果"] else ""))
+
+            with st.expander("查看相似比赛明细"):
+                show_df = pd.DataFrame(similar)[[
+                    "日期","主队","客队","主队WP","客队WP","主队EV","客队EV",
+                    "主队隐含概率","客队隐含概率","主队优势差距","客队优势差距",
+                    "比赛结果","距离"
+                ]]
+                st.dataframe(show_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("暂无足够的历史数据（需要有比赛结果的记录）")
 
         st.divider()
         if st.button("💾 保存记录", key="e_save"):
-            bet_on_home = any(("主" in s or "E★主" in s or "E1主" in s or "E2主" in s or "EX主" in s) and "W1↩" not in s for s in spots)
-            w1_away = any("W1↩客" in s for s in spots)
-            if bet_on_home and not w1_away:
-                save_odds = r["h_odds"]; save_dir = r["h_name"]
-            else:
-                save_odds = r["a_odds"]; save_dir = r["a_name"]
-            k = kelly_suggestion(spots, save_odds)
             record = {
                 "日期": str(date.today()), "运动": "电竞",
                 "主队": r["h_name"], "客队": r["a_name"],
@@ -433,16 +342,16 @@ with tab1:
                 "客队加权胜率": f"{r['a_wr']:.1%}",
                 "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A",
                 "客队期望值": f"{r['a_ev']:.2f}",
-                "主队隐含概率": f"{1/r['h_odds']:.1%}", "平局隐含概率": "N/A",
-                "客队隐含概率": f"{1/r['a_odds']:.1%}",
-                "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}", "平局优势差距": "N/A",
-                "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
-                "比赛结果": "", "甜蜜点": sweet_combined,
-                "建议下注": f"{k['建议下注']}块" if k else "—",
-                "押注方向": save_dir, "投注结果": "",
+                "主队隐含概率": f"{h_impl:.1f}%", "平局隐含概率": "N/A",
+                "客队隐含概率": f"{a_impl:.1f}%",
+                "主队优势差距": f"{h_adv:+.1f}%", "平局优势差距": "N/A",
+                "客队优势差距": f"{a_adv:+.1f}%",
+                "比赛结果": "", "甜蜜点": "",
+                "建议下注": "", "押注方向": "", "投注结果": "",
             }
             save_to_sheet(record)
-            st.success("✅ 记录已保存！")
+            st.success("✅ 记录已保存！比赛结束后请回来填写比赛结果，方便日后做相似比赛参考。")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 2: 足球
@@ -533,102 +442,68 @@ with tab2:
         st.divider()
         h_impl = (1/r["h_odds"])*100
         a_impl = (1/r["a_odds"])*100
-        spots = check_football_spots(r["h_wr"]*100, r["a_wr"]*100, r["h_ev"], r["a_ev"], h_impl, a_impl)
-        sweet_val = " | ".join(spots)
-
-        for s in spots:
-            if "W1↩" in s or "FW↩" in s: st.warning(spot_display(s))
-            elif "F★" in s: st.success(f"🏆 {spot_display(s)}")
-            elif "F2" in s: st.info(spot_display(s))
-            else:            st.success(spot_display(s))
+        h_adv = r["h_wr"]*100 - h_impl
+        a_adv = r["a_wr"]*100 - a_impl
 
         col9, col10, col11 = st.columns(3)
         with col9:
             st.subheader(f_home_name)
-            st.metric("加权胜率 (WP)",     f"{r['h_wr']:.1%}")
-            st.metric("期望值 (EV)",       f"RM{r['h_ev']:.2f}")
-            st.metric("隐含概率",           f"{1/r['h_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
+            st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}")
+            st.metric("期望值 (EV)",   f"RM{r['h_ev']:.2f}")
+            st.metric("隐含概率",       f"{h_impl:.1f}%")
+            st.metric("优势差距",       f"{h_adv:+.1f}%")
         with col10:
             st.subheader("平局")
-            st.metric("平局概率",           f"{r['draw_prob']:.1%}")
-            st.metric("期望值 (EV)",       f"RM{r['d_ev']:.2f}")
-            st.metric("隐含概率",           f"{1/r['d_odds']:.1%}")
+            st.metric("平局概率",       f"{r['draw_prob']:.1%}")
+            st.metric("期望值 (EV)",   f"RM{r['d_ev']:.2f}")
+            st.metric("隐含概率",       f"{1/r['d_odds']:.1%}")
             if r["d_ev"] > 0: st.success("✅ 正期望值")
             else:             st.error("❌ 负期望值")
         with col11:
             st.subheader(f_away_name)
-            st.metric("加权胜率 (WP)",     f"{r['a_wr']:.1%}")
-            st.metric("期望值 (EV)",       f"RM{r['a_ev']:.2f}")
-            st.metric("隐含概率",           f"{1/r['a_odds']:.1%}")
-            st.metric("优势差距 ⚠️仅参考", f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
+            st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}")
+            st.metric("期望值 (EV)",   f"RM{r['a_ev']:.2f}")
+            st.metric("隐含概率",       f"{a_impl:.1f}%")
+            st.metric("优势差距",       f"{a_adv:+.1f}%")
 
-        # F2特别提示
-        if any("F2" in s for s in spots):
-            st.info("💡 F2触发：建议押**胜平**（赢或平都算赢）。")
-        if any("FO" in s for s in spots):
-            st.info("💡 FO触发：两队实力相当，建议买**大球>2.5**！（78%，赔率~1.85）")
-        if any("FC大球" in s for s in spots):
-            st.info("💡 FC触发：客队EV虚高，主队大胜概率高，建议买**大球>2.5**！（73%）")
-        if any("FC-BTTS" in s for s in spots):
-            st.info("💡 FC触发：客队EV虚高，双方互攻，建议买**BTTS双方都进球**！（73%）")
-
+        # ── 相似历史比赛 ──────────────────────────────────────────────────
         st.divider()
-        if spots:
-            st.subheader("💰 分级注额建议")
-            is_f2   = any("F2" in s for s in spots)
-            is_fo   = any("FO" in s or "FC" in s for s in spots)
-            is_home = any("主" in s and "W1↩" not in s and "FW↩" not in s for s in spots)
-            is_away = any("客" in s and "W1↩" not in s and "FW↩" not in s for s in spots)
-            w1_home = any("W1↩主" in s for s in spots)
-            fw_home = any("FW↩主" in s for s in spots)
-            fw_away = any("FW↩客" in s for s in spots)
+        st.subheader("📊 相似历史比赛参考")
+        st.caption("根据WP和EV找出历史上最接近的10场比赛，仅供参考，不构成下注建议")
 
-            if fw_home or fw_away:
-                if fw_home:
-                    bet_odds = r["h_odds"]; bet_dir = f"{r['h_name']}（吃球）"
-                else:
-                    bet_odds = r["a_odds"]; bet_dir = f"{r['a_name']}（吃球）"
-            elif is_fo:
-                bet_odds = 1.85; bet_dir = "大球>2.5 或 BTTS（请查赔率）"
-            elif is_f2:
-                if any("F2" in s and "主" in s for s in spots):
-                    bet_odds = r["h_odds"]; bet_dir = f"{r['h_name']}（胜平）"
-                else:
-                    bet_odds = r["a_odds"]; bet_dir = f"{r['a_name']}（胜平）"
-            elif is_home or w1_home:
-                bet_odds = r["h_odds"]; bet_dir = r["h_name"]
-            elif is_away:
-                bet_odds = r["a_odds"]; bet_dir = r["a_name"]
-            else:
-                bet_odds = r["h_odds"]; bet_dir = "待定"
+        history_df = load_from_sheet()
+        similar = find_similar_matches(
+            history_df, "足球",
+            h_wp=r["h_wr"]*100, a_wp=r["a_wr"]*100,
+            h_ev=r["h_ev"], a_ev=r["a_ev"],
+            top_n=10,
+        )
 
-            kelly = kelly_suggestion(spots, bet_odds)
-            if kelly:
-                fk1, fk2, fk3 = st.columns(3)
-                fk1.metric("建议下注", f"{kelly['建议下注']}块")
-                fk2.metric("历史胜率", kelly["胜率"])
-                fk3.metric("盈亏平衡", kelly["盈亏平衡"])
-                if kelly["正期望"]:
-                    st.success(f"✅ 建议押 **{bet_dir}**，下注 **{kelly['建议下注']}块**（{kelly['档位']}）")
-                else:
-                    st.warning("⚠️ 赔率太低，期望值为负，谨慎下注！")
+        if similar:
+            summary = summarize_similar_matches(similar, f_home_name, f_away_name)
+            if summary:
+                sc1, sc2, sc3 = st.columns(3)
+                sc1.metric(f"{f_home_name}胜", summary[f"{f_home_name}胜"])
+                sc2.metric("平局", summary["平局"])
+                sc3.metric(f"{f_away_name}胜", summary[f"{f_away_name}胜"])
+                sc4, sc5 = st.columns(2)
+                sc4.metric(f"{f_home_name}不败", summary[f"{f_home_name}不败"])
+                sc5.metric(f"{f_away_name}不败", summary[f"{f_away_name}不败"])
+                st.caption(f"共{summary['样本数']}场可用样本" +
+                           (f"（另有{summary['未知结果']}场结果格式无法识别）" if summary["未知结果"] else ""))
+
+            with st.expander("查看相似比赛明细"):
+                show_df = pd.DataFrame(similar)[[
+                    "日期","主队","客队","主队WP","客队WP","主队EV","客队EV",
+                    "主队隐含概率","客队隐含概率","主队优势差距","客队优势差距",
+                    "比赛结果","距离"
+                ]]
+                st.dataframe(show_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("暂无足够的历史数据（需要有比赛结果的记录）")
 
         st.divider()
         if st.button("💾 保存记录", key="f_save"):
-            is_f2 = any("F2" in s for s in spots)
-            is_home = any("主" in s and "W1↩" not in s for s in spots)
-            w1_home = any("W1↩主" in s for s in spots)
-            if is_f2:
-                if any("F2主" in s for s in spots):
-                    save_odds = r["h_odds"]; save_dir = f"{r['h_name']}胜平"
-                else:
-                    save_odds = r["a_odds"]; save_dir = f"{r['a_name']}胜平"
-            elif is_home or w1_home:
-                save_odds = r["h_odds"]; save_dir = r["h_name"]
-            else:
-                save_odds = r["a_odds"]; save_dir = r["a_name"]
-            k = kelly_suggestion(spots, save_odds)
             record = {
                 "日期": str(date.today()), "运动": "足球",
                 "主队": r["h_name"], "客队": r["a_name"],
@@ -636,17 +511,17 @@ with tab2:
                 "客队加权胜率": f"{r['a_wr']:.1%}",
                 "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": f"{r['d_ev']:.2f}",
                 "客队期望值": f"{r['a_ev']:.2f}",
-                "主队隐含概率": f"{1/r['h_odds']:.1%}", "平局隐含概率": f"{1/r['d_odds']:.1%}",
-                "客队隐含概率": f"{1/r['a_odds']:.1%}",
-                "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}",
-                "平局优势差距": f"{r['draw_prob'] - 1/r['d_odds']:+.1%}",
-                "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
-                "比赛结果": "", "甜蜜点": sweet_val,
-                "建议下注": f"{k['建议下注']}块" if k else "—",
-                "押注方向": save_dir, "投注结果": "",
+                "主队隐含概率": f"{h_impl:.1f}%", "平局隐含概率": f"{1/r['d_odds']*100:.1f}%",
+                "客队隐含概率": f"{a_impl:.1f}%",
+                "主队优势差距": f"{h_adv:+.1f}%",
+                "平局优势差距": f"{r['draw_prob']*100 - 1/r['d_odds']*100:+.1f}%",
+                "客队优势差距": f"{a_adv:+.1f}%",
+                "比赛结果": "", "甜蜜点": "",
+                "建议下注": "", "押注方向": "", "投注结果": "",
             }
             save_to_sheet(record)
-            st.success("✅ 记录已保存！")
+            st.success("✅ 记录已保存！比赛结束后请回来填写比赛结果，方便日后做相似比赛参考。")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 3: 篮球
@@ -861,14 +736,16 @@ with tab4:
     if "bb_result" in st.session_state:
         r = st.session_state["bb_result"]
         st.divider()
+        h_impl = 1 / r["h_odds"] * 100
+        a_impl = 1 / r["a_odds"] * 100
 
         col7, col8 = st.columns(2)
         with col7:
             st.subheader(f"🏠 {r['h_name']}")
             st.metric("综合胜率 (WP)", f"{r['h_wr']:.1%}")
             st.metric("期望值 (EV)",   f"RM{r['h_ev']:.2f}")
-            st.metric("隐含概率",       f"{1/r['h_odds']:.1%}")
-            st.metric("优势差距",       f"{r['h_wr'] - 1/r['h_odds']:+.1%}")
+            st.metric("隐含概率",       f"{h_impl:.1f}%")
+            st.metric("优势差距",       f"{r['h_wr']*100 - h_impl:+.1f}%")
             if r["h_p_wr"] is not None:
                 pw = pitcher_weight(r["h_p_games"])
                 st.caption(f"投手胜率 {r['h_p_wr']:.0%}（{r['h_p_games']}场，权重{pw:.0%}）")
@@ -879,79 +756,48 @@ with tab4:
             st.subheader(f"✈️ {r['a_name']}")
             st.metric("综合胜率 (WP)", f"{r['a_wr']:.1%}")
             st.metric("期望值 (EV)",   f"RM{r['a_ev']:.2f}")
-            st.metric("隐含概率",       f"{1/r['a_odds']:.1%}")
-            st.metric("优势差距",       f"{r['a_wr'] - 1/r['a_odds']:+.1%}")
+            st.metric("隐含概率",       f"{a_impl:.1f}%")
+            st.metric("优势差距",       f"{r['a_wr']*100 - a_impl:+.1f}%")
             if r["a_p_wr"] is not None:
                 pw = pitcher_weight(r["a_p_games"])
                 st.caption(f"投手胜率 {r['a_p_wr']:.0%}（{r['a_p_games']}场，权重{pw:.0%}）")
             if r["a_ev"] > 0: st.success("✅ 正期望值")
             else:             st.error("❌ 负期望值")
 
-        # ── 棒球甜蜜点检测 ────────────────────────────────────────────────────
+        # ── 相似历史比赛 ──────────────────────────────────────────────────
         st.divider()
-        bb_spots = []
-        h_impl = 1 / r["h_odds"] * 100
-        a_impl = 1 / r["a_odds"] * 100
+        st.subheader("📊 相似历史比赛参考")
+        st.caption("根据WP和EV找出历史上最接近的10场比赛，仅供参考，不构成下注建议")
 
-        # B8：WP≥75% + EV≥+20 → 押高WP队
-        if r["h_wr"] * 100 >= 75 and r["h_ev"] >= 20:
-            bb_spots.append(f"B8主({r['h_wr']:.0%})")
-        if r["a_wr"] * 100 >= 75 and r["a_ev"] >= 20:
-            bb_spots.append(f"B8客({r['a_wr']:.0%})")
+        history_df = load_from_sheet()
+        similar = find_similar_matches(
+            history_df, "棒球",
+            h_wp=r["h_wr"]*100, a_wp=r["a_wr"]*100,
+            h_ev=r["h_ev"], a_ev=r["a_ev"],
+            top_n=10,
+        )
 
-        # BW↩：客队EV≥+40 + 主队WP≥45% → 逆向押主队
-        if r["a_ev"] >= 40 and r["h_wr"] * 100 >= 45:
-            bb_spots.append(f"BW↩主(客EV{r['a_ev']:.0f})")
+        if similar:
+            summary = summarize_similar_matches(similar, r["h_name"], r["a_name"])
+            if summary:
+                sc1, sc2 = st.columns(2)
+                sc1.metric(f"{r['h_name']}胜", summary[f"{r['h_name']}胜"])
+                sc2.metric(f"{r['a_name']}胜", summary[f"{r['a_name']}胜"])
+                st.caption(f"共{summary['样本数']}场可用样本" +
+                           (f"（另有{summary['未知结果']}场结果格式无法识别）" if summary["未知结果"] else ""))
 
-        if bb_spots:
-            st.subheader("🎯 棒球甜蜜点触发！")
-            for s in bb_spots:
-                if "BW↩" in s:
-                    st.warning(f"🔄 {s} — 客队EV虚高，逆向押主队！（历史83%）")
-                else:
-                    st.success(f"⚾ {s} — 强队占优，押高WP队！（历史67%）")
-
-            # 押注方向
-            if any("BW↩主" in s for s in bb_spots):
-                bb_bet_dir = r["h_name"]
-                bb_bet_odds = r["h_odds"]
-            elif any("B8主" in s for s in bb_spots):
-                bb_bet_dir = r["h_name"]
-                bb_bet_odds = r["h_odds"]
-            elif any("B8客" in s for s in bb_spots):
-                bb_bet_dir = r["a_name"]
-                bb_bet_odds = r["a_odds"]
-            else:
-                bb_bet_dir = "待定"
-                bb_bet_odds = r["h_odds"]
-
-            # 简单Kelly建议
-            spot_wr = 0.83 if any("BW↩" in s for s in bb_spots) else 0.67
-            edge = spot_wr - (1 / bb_bet_odds)
-            if edge > 0:
-                kelly_frac = edge / (bb_bet_odds - 1)
-                suggested = max(10, min(50, round(kelly_frac * 200 / 10) * 10))
-                st.success(f"✅ 建议押 **{bb_bet_dir}**，下注约 **{suggested}块**（历史胜率{spot_wr:.0%}）")
+            with st.expander("查看相似比赛明细"):
+                show_df = pd.DataFrame(similar)[[
+                    "日期","主队","客队","主队WP","客队WP","主队EV","客队EV",
+                    "主队隐含概率","客队隐含概率","主队优势差距","客队优势差距",
+                    "比赛结果","距离"
+                ]]
+                st.dataframe(show_df, use_container_width=True, hide_index=True)
         else:
-            st.caption("⚾ 今日无棒球甜蜜点触发，仅记录数据")
+            st.info("暂无足够的历史数据（需要有比赛结果的记录）")
 
+        st.divider()
         if st.button("💾 保存记录", key="bb_save"):
-            bb_spot_str = " | ".join(bb_spots) if bb_spots else "—"
-            if any("BW↩主" in s for s in bb_spots):
-                save_dir = r["h_name"]; save_odds = r["h_odds"]
-            elif any("B8主" in s for s in bb_spots):
-                save_dir = r["h_name"]; save_odds = r["h_odds"]
-            elif any("B8客" in s for s in bb_spots):
-                save_dir = r["a_name"]; save_odds = r["a_odds"]
-            else:
-                save_dir = "—"; save_odds = r["h_odds"]
-            spot_wr2 = 0.83 if any("BW↩" in s for s in bb_spots) else 0.67
-            edge2 = spot_wr2 - (1 / save_odds) if bb_spots else 0
-            if edge2 > 0:
-                kelly_frac2 = edge2 / (save_odds - 1)
-                save_amount = max(10, min(50, round(kelly_frac2 * 200 / 10) * 10))
-            else:
-                save_amount = "—"
             record = {
                 "日期": str(date.today()), "运动": "棒球",
                 "主队": r["h_name"], "客队": r["a_name"],
@@ -959,16 +805,16 @@ with tab4:
                 "客队加权胜率": f"{r['a_wr']:.1%}",
                 "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A",
                 "客队期望值": f"{r['a_ev']:.2f}",
-                "主队隐含概率": f"{1/r['h_odds']:.1%}", "平局隐含概率": "N/A",
-                "客队隐含概率": f"{1/r['a_odds']:.1%}",
-                "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}", "平局优势差距": "N/A",
-                "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
-                "比赛结果": "", "甜蜜点": bb_spot_str,
-                "建议下注": save_amount,
-                "押注方向": save_dir, "投注结果": "",
+                "主队隐含概率": f"{h_impl:.1f}%", "平局隐含概率": "N/A",
+                "客队隐含概率": f"{a_impl:.1f}%",
+                "主队优势差距": f"{r['h_wr']*100 - h_impl:+.1f}%", "平局优势差距": "N/A",
+                "客队优势差距": f"{r['a_wr']*100 - a_impl:+.1f}%",
+                "比赛结果": "", "甜蜜点": "",
+                "建议下注": "", "押注方向": "", "投注结果": "",
             }
             save_to_sheet(record)
-            st.success("✅ 记录已保存！")
+            st.success("✅ 记录已保存！比赛结束后请回来填写比赛结果，方便日后做相似比赛参考。")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 5: 记录
@@ -986,19 +832,35 @@ with tab5:
         with col2: st.metric("今日记录", len(df[df["日期"] == str(date.today())]))
 
         st.divider()
-        st.subheader("🎯 甜蜜点统计")
-        stats = calc_sweet_spot_stats(df)
-        if stats:
-            for s in stats:
-                with st.expander(f"{s['甜蜜点']}　命中率 {s['命中率']}　已结算 {s['已结算']}/{s['总记录']}"):
-                    c1, c2, c3, c4, c5 = st.columns(5)
-                    c1.metric("总记录",  s["总记录"])
-                    c2.metric("已结算",  s["已结算"])
-                    c3.metric("赢",      s["赢"])
-                    c4.metric("输",      s["输"])
-                    c5.metric("命中率",  s["命中率"])
+        st.subheader("✏️ 填写比赛结果")
+        st.caption("填写比分后，这场比赛会成为日后「相似比赛参考」的数据来源")
+
+        missing = df[(df["比赛结果"].astype(str).str.strip() == "") | (df["比赛结果"].isna())]
+        if missing.empty:
+            st.success("所有记录都已填写结果！")
         else:
-            st.info("还没有甜蜜点记录。")
+            st.caption(f"还有 {len(missing)} 场记录未填写结果")
+            # 最多显示最近20场待填写
+            missing_recent = missing.tail(20)
+            for idx, row in missing_recent.iloc[::-1].iterrows():
+                with st.expander(f"{row['日期']} | {row['运动']} | {row['主队']} vs {row['客队']}"):
+                    score_input = st.text_input(
+                        "比赛结果（格式：主队比分-客队比分，如 2-1）",
+                        value="", key=f"result_fill_{idx}"
+                    )
+                    if st.button("保存结果", key=f"save_result_{idx}"):
+                        if re.match(r"^\d+\s*-\s*\d+$", score_input.strip()):
+                            try:
+                                sheet = get_sheet()
+                                # +2: 第1行是表头，DataFrame索引从0开始 → sheet行号 = idx + 2
+                                col_idx = HEADERS.index("比赛结果") + 1
+                                sheet.update_cell(idx + 2, col_idx, score_input.strip())
+                                st.success("✅ 已保存！")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"保存失败: {e}")
+                        else:
+                            st.warning("格式错误，请输入「数字-数字」，如 2-1")
 
         st.divider()
         st.subheader("📄 完整记录")
