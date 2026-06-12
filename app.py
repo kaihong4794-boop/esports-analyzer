@@ -36,7 +36,7 @@ def save_to_sheet(record):
 def load_from_sheet():
     try:
         sheet = get_sheet()
-        data = sheet.get_all_records()
+        data = sheet.get_all_records(expected_headers=HEADERS)
         return pd.DataFrame(data) if data else pd.DataFrame(columns=HEADERS)
     except Exception as e:
         st.session_state["_load_sheet_error"] = str(e)
