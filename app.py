@@ -30,9 +30,11 @@ def save_to_sheet(record):
         if sheet.row_count <= 1 and not sheet.cell(1, 1).value:
             sheet.append_row(HEADERS)
         sheet.append_row([record.get(h, "") for h in HEADERS])
+        load_from_sheet.clear()
     except Exception as e:
         st.error(f"Google Sheets 保存失败: {e}")
 
+@st.cache_data(ttl=60)
 def load_from_sheet():
     try:
         sheet = get_sheet()
