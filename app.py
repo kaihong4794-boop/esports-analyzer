@@ -73,7 +73,7 @@ def _parse_ev(val):
     except:
         return None
 
-def find_similar_matches(df, sport, a_ev, top_n=10):
+def find_similar_matches(df, sport, a_ev, top_n=15):
     """
     在历史数据df中找出与新比赛「客队EV」最接近的场次。
     只比较同一运动(sport)、且有比赛结果记录的场次。
@@ -113,6 +113,46 @@ def find_similar_matches(df, sport, a_ev, top_n=10):
 
     rows.sort(key=lambda x: x["距离(客EV差)"])
     return rows[:top_n]
+
+def show_similar_table(similar, sport="足球"):
+    """显示相似比赛表格 + 胜平负统计"""
+    if not similar:
+        st.info("暂无足够的历史数据（需要有比赛结果的记录）")
+        return
+
+    show_df = pd.DataFrame(similar)[[
+        "日期","主队","客队","主队WP","客队WP",
+        "主队EV","客队EV","客队隐含概率","比赛结果","距离(客EV差)"
+    ]]
+    st.dataframe(show_df, use_container_width=True, hide_index=True)
+
+    # 统计胜平负
+    h_win = draw = a_win = unknown = 0
+    for m in similar:
+        score = str(m["比赛结果"]).strip()
+        mm = re.match(r"^(\d+)\s*-\s*(\d+)$", score)
+        if not mm:
+            unknown += 1
+            continue
+        hs, as_ = int(mm.group(1)), int(mm.group(2))
+        if hs > as_: h_win += 1
+        elif hs < as_: a_win += 1
+        else: draw += 1
+
+    n = h_win + draw + a_win
+    if n > 0:
+        st.divider()
+        if sport == "足球":
+            c1, c2, c3 = st.columns(3)
+            c1.metric("🏠 主队胜", f"{h_win}/{n}  ({h_win/n:.0%})")
+            c2.metric("🤝 平局",   f"{draw}/{n}  ({draw/n:.0%})")
+            c3.metric("✈️ 客队胜", f"{a_win}/{n}  ({a_win/n:.0%})")
+        else:
+            c1, c2 = st.columns(2)
+            c1.metric("🏠 主队胜", f"{h_win}/{n}  ({h_win/n:.0%})")
+            c2.metric("✈️ 客队胜", f"{a_win}/{n}  ({a_win/n:.0%})")
+        if unknown > 0:
+            st.caption(f"另有 {unknown} 场结果格式无法识别（未计入）")
 
 
 # ─── 比赛结果权重 ──────────────────────────────────────────────────────────────
@@ -286,17 +326,9 @@ with tab1:
         st.caption("根据「客队EV」找出历史上最接近的10场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "电竞", a_ev=r["a_ev"], top_n=10)
+        similar = find_similar_matches(history_df, "电竞", a_ev=r["a_ev"], top_n=15)
 
-        if similar:
-            show_df = pd.DataFrame(similar)[[
-                "日期","主队","客队","主队WP","客队WP",
-                "主队EV","客队EV","客队隐含概率","比赛结果","距离(客EV差)"
-            ]]
-            st.dataframe(show_df, use_container_width=True, hide_index=True)
-        else:
-            st.info("暂无足够的历史数据（需要有比赛结果的记录）")
-
+        show_similar_table(similar, sport="电竞")
 
 
         st.divider()
@@ -449,17 +481,9 @@ with tab2:
         st.caption("根据「客队EV」找出历史上最接近的10场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "足球", a_ev=r["a_ev"], top_n=10)
+        similar = find_similar_matches(history_df, "足球", a_ev=r["a_ev"], top_n=15)
 
-        if similar:
-            show_df = pd.DataFrame(similar)[[
-                "日期","主队","客队","主队WP","客队WP",
-                "主队EV","客队EV","客队隐含概率","比赛结果","距离(客EV差)"
-            ]]
-            st.dataframe(show_df, use_container_width=True, hide_index=True)
-        else:
-            st.info("暂无足够的历史数据（需要有比赛结果的记录）")
-
+        show_similar_table(similar, sport="足球")
 
         st.divider()
         if st.button("💾 保存记录", key="f_save"):
@@ -740,17 +764,9 @@ with tab4:
         st.caption("根据「客队EV」找出历史上最接近的10场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "棒球", a_ev=r["a_ev"], top_n=10)
+        similar = find_similar_matches(history_df, "棒球", a_ev=r["a_ev"], top_n=15)
 
-        if similar:
-            show_df = pd.DataFrame(similar)[[
-                "日期","主队","客队","主队WP","客队WP",
-                "主队EV","客队EV","客队隐含概率","比赛结果","距离(客EV差)"
-            ]]
-            st.dataframe(show_df, use_container_width=True, hide_index=True)
-
-        else:
-            st.info("暂无足够的历史数据（需要有比赛结果的记录）")
+        show_similar_table(similar, sport="棒球")
 
         st.divider()
         if st.button("💾 保存记录", key="bb_save"):
