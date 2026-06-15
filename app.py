@@ -73,9 +73,9 @@ def _parse_ev(val):
     except:
         return None
 
-def find_similar_matches(df, sport, a_impl, top_n=15):
+def find_similar_matches(df, sport, a_ev, top_n=15):
     """
-    在历史数据df中找出与新比赛「客队隐含概率」最接近的场次。
+    在历史数据df中找出与新比赛「客队EV」最接近的场次。
     只比较同一运动(sport)、且有比赛结果记录的场次。
     """
     if df.empty:
@@ -91,8 +91,8 @@ def find_similar_matches(df, sport, a_impl, top_n=15):
         if not result or result in ("nan", "None", "—", "CANCEL"):
             continue
 
-        c_a_impl = _parse_pct(row.get("客队隐含概率"))
-        if c_a_impl is None:
+        c_a_ev = _parse_ev(row.get("客队期望值"))
+        if c_a_ev is None:
             continue
 
         c_h_wp  = _parse_pct(row.get("主队加权胜率"))
@@ -101,7 +101,7 @@ def find_similar_matches(df, sport, a_impl, top_n=15):
         c_a_ev  = _parse_ev(row.get("客队期望值"))
 
         rows.append({
-            "距离(客队隐含概率差)": round(abs(c_a_impl - a_impl), 1),
+            "距离(客EV差)": round(abs(c_a_ev - a_ev), 1),
             "日期": row.get("日期", ""),
             "主队": row.get("主队", ""),
             "客队": row.get("客队", ""),
@@ -111,7 +111,7 @@ def find_similar_matches(df, sport, a_impl, top_n=15):
             "比赛结果": result,
         })
 
-    rows.sort(key=lambda x: x["距离(客队隐含概率差)"])
+    rows.sort(key=lambda x: x["距离(客EV差)"])
     return rows[:top_n]
 
 def show_similar_table(similar, sport="足球", session_key="similar_stats"):
@@ -123,7 +123,7 @@ def show_similar_table(similar, sport="足球", session_key="similar_stats"):
 
     show_df = pd.DataFrame(similar)[[
         "日期","主队","客队","主队WP","客队WP",
-        "主队EV","客队EV","客队隐含概率","比赛结果","距离(客队隐含概率差)"
+        "主队EV","客队EV","客队隐含概率","比赛结果","距离(客EV差)"
     ]]
     st.dataframe(show_df, use_container_width=True, hide_index=True)
 
@@ -329,10 +329,10 @@ with tab1:
         # ── 相似历史比赛 ──────────────────────────────────────────────────
         st.divider()
         st.subheader("📊 相似历史比赛参考")
-        st.caption("根据「客队隐含概率」找出历史上最接近的15场比赛，仅供参考")
+        st.caption("根据「客队EV」找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "电竞", a_impl=a_impl, top_n=15)
+        similar = find_similar_matches(history_df, "电竞", a_ev=r["a_ev"], top_n=15)
 
         show_similar_table(similar, sport="电竞", session_key="e_similar_stats")
 
@@ -484,10 +484,10 @@ with tab2:
         # ── 相似历史比赛 ──────────────────────────────────────────────────
         st.divider()
         st.subheader("📊 相似历史比赛参考")
-        st.caption("根据「客队隐含概率」找出历史上最接近的15场比赛，仅供参考")
+        st.caption("根据「客队EV」找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "足球", a_impl=a_impl, top_n=15)
+        similar = find_similar_matches(history_df, "足球", a_ev=r["a_ev"], top_n=15)
 
         show_similar_table(similar, sport="足球", session_key="f_similar_stats")
 
@@ -767,10 +767,10 @@ with tab4:
         # ── 相似历史比赛 ──────────────────────────────────────────────────
         st.divider()
         st.subheader("📊 相似历史比赛参考")
-        st.caption("根据「客队隐含概率」找出历史上最接近的15场比赛，仅供参考")
+        st.caption("根据「客队EV」找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "棒球", a_impl=a_impl, top_n=15)
+        similar = find_similar_matches(history_df, "棒球", a_ev=r["a_ev"], top_n=15)
 
         show_similar_table(similar, sport="棒球", session_key="bb_similar_stats")
 
