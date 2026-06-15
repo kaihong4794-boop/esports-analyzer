@@ -107,7 +107,7 @@ def find_similar_matches(df, sport, a_ev, top_n=15):
             "客队": row.get("客队", ""),
             "主队WP": c_h_wp, "客队WP": c_a_wp,
             "主队EV": c_h_ev, "客队EV": c_a_ev,
-            "客队隐含概率": f"{c_a_impl:.1f}%",
+            "客队隐含概率": row.get("客队隐含概率", ""),
             "比赛结果": result,
         })
 
