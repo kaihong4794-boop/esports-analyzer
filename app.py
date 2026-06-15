@@ -114,10 +114,11 @@ def find_similar_matches(df, sport, a_ev, top_n=15):
     rows.sort(key=lambda x: x["距离(客EV差)"])
     return rows[:top_n]
 
-def show_similar_table(similar, sport="足球"):
-    """显示相似比赛表格 + 胜平负统计"""
+def show_similar_table(similar, sport="足球", session_key="similar_stats"):
+    """显示相似比赛表格 + 胜平负统计，并把统计存入session_state"""
     if not similar:
         st.info("暂无足够的历史数据（需要有比赛结果的记录）")
+        st.session_state[session_key] = ""
         return
 
     show_df = pd.DataFrame(similar)[[
@@ -140,6 +141,7 @@ def show_similar_table(similar, sport="足球"):
         else: draw += 1
 
     n = h_win + draw + a_win
+    stats_str = ""
     if n > 0:
         st.divider()
         if sport == "足球":
@@ -147,12 +149,16 @@ def show_similar_table(similar, sport="足球"):
             c1.metric("🏠 主队胜", f"{h_win}/{n}  ({h_win/n:.0%})")
             c2.metric("🤝 平局",   f"{draw}/{n}  ({draw/n:.0%})")
             c3.metric("✈️ 客队胜", f"{a_win}/{n}  ({a_win/n:.0%})")
+            stats_str = f"主胜{h_win/n:.0%} 平{draw/n:.0%} 客胜{a_win/n:.0%}（{n}场）"
         else:
             c1, c2 = st.columns(2)
             c1.metric("🏠 主队胜", f"{h_win}/{n}  ({h_win/n:.0%})")
             c2.metric("✈️ 客队胜", f"{a_win}/{n}  ({a_win/n:.0%})")
+            stats_str = f"主胜{h_win/n:.0%} 客胜{a_win/n:.0%}（{n}场）"
         if unknown > 0:
             st.caption(f"另有 {unknown} 场结果格式无法识别（未计入）")
+
+    st.session_state[session_key] = stats_str
 
 
 # ─── 比赛结果权重 ──────────────────────────────────────────────────────────────
@@ -328,7 +334,7 @@ with tab1:
         history_df = load_from_sheet()
         similar = find_similar_matches(history_df, "电竞", a_ev=r["a_ev"], top_n=15)
 
-        show_similar_table(similar, sport="电竞")
+        show_similar_table(similar, sport="电竞", session_key="e_similar_stats")
 
 
         st.divider()
@@ -344,7 +350,7 @@ with tab1:
                 "客队隐含概率": f"{a_impl:.1f}%",
                 "主队优势差距": f"{h_adv:+.1f}%", "平局优势差距": "N/A",
                 "客队优势差距": f"{a_adv:+.1f}%",
-                "比赛结果": "", "甜蜜点": "",
+                "比赛结果": "", "甜蜜点": st.session_state.get("e_similar_stats", ""),
                 "建议下注": "", "押注方向": "", "投注结果": "",
             }
             save_to_sheet(record)
@@ -483,7 +489,7 @@ with tab2:
         history_df = load_from_sheet()
         similar = find_similar_matches(history_df, "足球", a_ev=r["a_ev"], top_n=15)
 
-        show_similar_table(similar, sport="足球")
+        show_similar_table(similar, sport="足球", session_key="f_similar_stats")
 
         st.divider()
         if st.button("💾 保存记录", key="f_save"):
@@ -499,7 +505,7 @@ with tab2:
                 "主队优势差距": f"{h_adv:+.1f}%",
                 "平局优势差距": f"{r['draw_prob']*100 - 1/r['d_odds']*100:+.1f}%",
                 "客队优势差距": f"{a_adv:+.1f}%",
-                "比赛结果": "", "甜蜜点": "",
+                "比赛结果": "", "甜蜜点": st.session_state.get("f_similar_stats", ""),
                 "建议下注": "", "押注方向": "", "投注结果": "",
             }
             save_to_sheet(record)
@@ -766,7 +772,7 @@ with tab4:
         history_df = load_from_sheet()
         similar = find_similar_matches(history_df, "棒球", a_ev=r["a_ev"], top_n=15)
 
-        show_similar_table(similar, sport="棒球")
+        show_similar_table(similar, sport="棒球", session_key="bb_similar_stats")
 
         st.divider()
         if st.button("💾 保存记录", key="bb_save"):
@@ -781,7 +787,7 @@ with tab4:
                 "客队隐含概率": f"{a_impl:.1f}%",
                 "主队优势差距": f"{r['h_wr']*100 - h_impl:+.1f}%", "平局优势差距": "N/A",
                 "客队优势差距": f"{r['a_wr']*100 - a_impl:+.1f}%",
-                "比赛结果": "", "甜蜜点": "",
+                "比赛结果": "", "甜蜜点": st.session_state.get("bb_similar_stats", ""),
                 "建议下注": "", "押注方向": "", "投注结果": "",
             }
             save_to_sheet(record)
