@@ -73,12 +73,10 @@ def _parse_ev(val):
     except:
         return None
 
-def find_similar_matches(df, sport, a_impl, top_n=10):
+def find_similar_matches(df, sport, a_ev, top_n=10):
     """
-    在历史数据df中找出与新比赛"客队隐含概率"最接近的场次。
+    在历史数据df中找出与新比赛「客队EV」最接近的场次。
     只比较同一运动(sport)、且有比赛结果记录的场次。
-    a_impl: 新比赛的客队隐含概率（百分比数值，如 58.8 代表 58.8%）
-    返回: list of dicts，每个包含原始行信息 + 客队隐含概率差距
     """
     if df.empty:
         return []
@@ -91,32 +89,29 @@ def find_similar_matches(df, sport, a_impl, top_n=10):
     for _, row in candidates.iterrows():
         result = str(row.get("比赛结果", "")).strip()
         if not result or result in ("nan", "None", "—", "CANCEL"):
-            continue  # 没有结果的场次不能用来参考
-
-        c_a_impl = _parse_pct(row.get("客队隐含概率"))
-        if c_a_impl is None:
             continue
 
-        c_h_wp = _parse_pct(row.get("主队加权胜率"))
-        c_a_wp = _parse_pct(row.get("客队加权胜率"))
-        c_h_ev = _parse_ev(row.get("主队期望值"))
         c_a_ev = _parse_ev(row.get("客队期望值"))
+        if c_a_ev is None:
+            continue
+
+        c_h_wp  = _parse_pct(row.get("主队加权胜率"))
+        c_a_wp  = _parse_pct(row.get("客队加权胜率"))
+        c_h_ev  = _parse_ev(row.get("主队期望值"))
+        c_a_impl = _parse_pct(row.get("客队隐含概率"))
 
         rows.append({
-            "距离": abs(c_a_impl - a_impl),
+            "距离(客EV差)": round(abs(c_a_ev - a_ev), 1),
             "日期": row.get("日期", ""),
             "主队": row.get("主队", ""),
             "客队": row.get("客队", ""),
             "主队WP": c_h_wp, "客队WP": c_a_wp,
             "主队EV": c_h_ev, "客队EV": c_a_ev,
-            "主队隐含概率": row.get("主队隐含概率", ""),
-            "客队隐含概率": row.get("客队隐含概率", ""),
-            "主队优势差距": row.get("主队优势差距", ""),
-            "客队优势差距": row.get("客队优势差距", ""),
+            "客队隐含概率": f"{c_a_impl:.1f}%" if c_a_impl else "",
             "比赛结果": result,
         })
 
-    rows.sort(key=lambda x: x["距离"])
+    rows.sort(key=lambda x: x["距离(客EV差)"])
     return rows[:top_n]
 
 
@@ -266,31 +261,42 @@ with tab1:
             st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}")
             st.metric("期望值 (EV)",   f"RM{r['h_ev']:.2f}")
             st.metric("隐含概率",       f"{h_impl:.1f}%")
-            st.metric("优势差距",       f"{h_adv:+.1f}%")
         with col6:
             st.subheader(r["a_name"])
             st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}")
             st.metric("期望值 (EV)",   f"RM{r['a_ev']:.2f}")
             st.metric("隐含概率",       f"{a_impl:.1f}%")
-            st.metric("优势差距",       f"{a_adv:+.1f}%")
+
+        # ── EV逆向信号 ────────────────────────────────────────────────────
+        st.divider()
+        if r["a_ev"] >= 100:
+            st.success(f"🔄 EV逆向信号（强）：客队EV = {r['a_ev']:.1f} ≥ 100 → 参考押 **{r['h_name']}** 独赢（历史约70%）")
+        elif r["a_ev"] >= 50:
+            st.info(f"🔄 EV逆向信号：客队EV = {r['a_ev']:.1f} ≥ 50 → 参考押 **{r['h_name']}** 独赢（历史约64%）")
+        elif r["h_ev"] >= 100:
+            st.success(f"🔄 EV逆向信号（强）：主队EV = {r['h_ev']:.1f} ≥ 100 → 参考押 **{r['a_name']}** 独赢（历史约70%）")
+        elif r["h_ev"] >= 50:
+            st.info(f"🔄 EV逆向信号：主队EV = {r['h_ev']:.1f} ≥ 50 → 参考押 **{r['a_name']}** 独赢（历史约64%）")
+        else:
+            st.warning("⚪ 无EV逆向信号（主客队EV均低于50）")
 
         # ── 相似历史比赛 ──────────────────────────────────────────────────
         st.divider()
         st.subheader("📊 相似历史比赛参考")
-        st.caption("根据「客队隐含概率」找出历史上最接近的10场比赛，仅供参考，不构成下注建议")
+        st.caption("根据「客队EV」找出历史上最接近的10场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "电竞", a_impl=a_impl, top_n=10)
+        similar = find_similar_matches(history_df, "电竞", a_ev=r["a_ev"], top_n=10)
 
         if similar:
             show_df = pd.DataFrame(similar)[[
-                "日期","主队","客队","主队WP","客队WP","主队EV","客队EV",
-                "主队隐含概率","客队隐含概率","主队优势差距","客队优势差距",
-                "比赛结果","距离"
+                "日期","主队","客队","主队WP","客队WP",
+                "主队EV","客队EV","客队隐含概率","比赛结果","距离(客EV差)"
             ]]
             st.dataframe(show_df, use_container_width=True, hide_index=True)
         else:
             st.info("暂无足够的历史数据（需要有比赛结果的记录）")
+
 
 
         st.divider()
@@ -411,7 +417,6 @@ with tab2:
             st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}")
             st.metric("期望值 (EV)",   f"RM{r['h_ev']:.2f}")
             st.metric("隐含概率",       f"{h_impl:.1f}%")
-            st.metric("优势差距",       f"{h_adv:+.1f}%")
         with col10:
             st.subheader("平局")
             st.metric("平局概率",       f"{r['draw_prob']:.1%}")
@@ -424,25 +429,37 @@ with tab2:
             st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}")
             st.metric("期望值 (EV)",   f"RM{r['a_ev']:.2f}")
             st.metric("隐含概率",       f"{a_impl:.1f}%")
-            st.metric("优势差距",       f"{a_adv:+.1f}%")
+
+        # ── EV逆向信号 ────────────────────────────────────────────────────
+        st.divider()
+        if r["a_ev"] >= 100:
+            st.success(f"🔄 EV逆向信号（强）：客队EV = {r['a_ev']:.1f} ≥ 100 → 参考押 **{f_home_name}** 独赢（历史约70%）")
+        elif r["a_ev"] >= 50:
+            st.info(f"🔄 EV逆向信号：客队EV = {r['a_ev']:.1f} ≥ 50 → 参考押 **{f_home_name}** 独赢（历史约64%）")
+        elif r["h_ev"] >= 100:
+            st.success(f"🔄 EV逆向信号（强）：主队EV = {r['h_ev']:.1f} ≥ 100 → 参考押 **{f_away_name}** 独赢（历史约70%）")
+        elif r["h_ev"] >= 50:
+            st.info(f"🔄 EV逆向信号：主队EV = {r['h_ev']:.1f} ≥ 50 → 参考押 **{f_away_name}** 独赢（历史约64%）")
+        else:
+            st.warning("⚪ 无EV逆向信号（主客队EV均低于50）")
 
         # ── 相似历史比赛 ──────────────────────────────────────────────────
         st.divider()
         st.subheader("📊 相似历史比赛参考")
-        st.caption("根据「客队隐含概率」找出历史上最接近的10场比赛，仅供参考，不构成下注建议")
+        st.caption("根据「客队EV」找出历史上最接近的10场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "足球", a_impl=a_impl, top_n=10)
+        similar = find_similar_matches(history_df, "足球", a_ev=r["a_ev"], top_n=10)
 
         if similar:
             show_df = pd.DataFrame(similar)[[
-                "日期","主队","客队","主队WP","客队WP","主队EV","客队EV",
-                "主队隐含概率","客队隐含概率","主队优势差距","客队优势差距",
-                "比赛结果","距离"
+                "日期","主队","客队","主队WP","客队WP",
+                "主队EV","客队EV","客队隐含概率","比赛结果","距离(客EV差)"
             ]]
             st.dataframe(show_df, use_container_width=True, hide_index=True)
         else:
             st.info("暂无足够的历史数据（需要有比赛结果的记录）")
+
 
         st.divider()
         if st.button("💾 保存记录", key="f_save"):
@@ -687,7 +704,6 @@ with tab4:
             st.metric("综合胜率 (WP)", f"{r['h_wr']:.1%}")
             st.metric("期望值 (EV)",   f"RM{r['h_ev']:.2f}")
             st.metric("隐含概率",       f"{h_impl:.1f}%")
-            st.metric("优势差距",       f"{r['h_wr']*100 - h_impl:+.1f}%")
             if r["h_p_wr"] is not None:
                 pw = pitcher_weight(r["h_p_games"])
                 st.caption(f"投手胜率 {r['h_p_wr']:.0%}（{r['h_p_games']}场，权重{pw:.0%}）")
@@ -699,28 +715,40 @@ with tab4:
             st.metric("综合胜率 (WP)", f"{r['a_wr']:.1%}")
             st.metric("期望值 (EV)",   f"RM{r['a_ev']:.2f}")
             st.metric("隐含概率",       f"{a_impl:.1f}%")
-            st.metric("优势差距",       f"{r['a_wr']*100 - a_impl:+.1f}%")
             if r["a_p_wr"] is not None:
                 pw = pitcher_weight(r["a_p_games"])
                 st.caption(f"投手胜率 {r['a_p_wr']:.0%}（{r['a_p_games']}场，权重{pw:.0%}）")
             if r["a_ev"] > 0: st.success("✅ 正期望值")
             else:             st.error("❌ 负期望值")
 
+        # ── EV逆向信号 ────────────────────────────────────────────────────
+        st.divider()
+        if r["a_ev"] >= 100:
+            st.success(f"🔄 EV逆向信号（强）：客队EV = {r['a_ev']:.1f} ≥ 100 → 参考押 **{r['h_name']}** 独赢（历史约70%）")
+        elif r["a_ev"] >= 50:
+            st.info(f"🔄 EV逆向信号：客队EV = {r['a_ev']:.1f} ≥ 50 → 参考押 **{r['h_name']}** 独赢（历史约64%）")
+        elif r["h_ev"] >= 100:
+            st.success(f"🔄 EV逆向信号（强）：主队EV = {r['h_ev']:.1f} ≥ 100 → 参考押 **{r['a_name']}** 独赢（历史约70%）")
+        elif r["h_ev"] >= 50:
+            st.info(f"🔄 EV逆向信号：主队EV = {r['h_ev']:.1f} ≥ 50 → 参考押 **{r['a_name']}** 独赢（历史约64%）")
+        else:
+            st.warning("⚪ 无EV逆向信号（主客队EV均低于50）")
+
         # ── 相似历史比赛 ──────────────────────────────────────────────────
         st.divider()
         st.subheader("📊 相似历史比赛参考")
-        st.caption("根据「客队隐含概率」找出历史上最接近的10场比赛，仅供参考，不构成下注建议")
+        st.caption("根据「客队EV」找出历史上最接近的10场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "棒球", a_impl=a_impl, top_n=10)
+        similar = find_similar_matches(history_df, "棒球", a_ev=r["a_ev"], top_n=10)
 
         if similar:
             show_df = pd.DataFrame(similar)[[
-                "日期","主队","客队","主队WP","客队WP","主队EV","客队EV",
-                "主队隐含概率","客队隐含概率","主队优势差距","客队优势差距",
-                "比赛结果","距离"
+                "日期","主队","客队","主队WP","客队WP",
+                "主队EV","客队EV","客队隐含概率","比赛结果","距离(客EV差)"
             ]]
             st.dataframe(show_df, use_container_width=True, hide_index=True)
+
         else:
             st.info("暂无足够的历史数据（需要有比赛结果的记录）")
 
