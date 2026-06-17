@@ -73,10 +73,12 @@ def _parse_ev(val):
     except:
         return None
 
-def find_similar_matches(df, sport, d_wp, top_n=15):
+def find_similar_matches(df, sport, match_val, match_col, dist_label, top_n=15):
     """
-    在历史数据df中找出与新比赛「平局WP」最接近的场次。
-    只比较同一运动(sport)、且有比赛结果记录的场次。
+    在历史数据df中找出最接近的场次。
+    match_col: 用于匹配的列名（如"平局加权胜率"、"客队加权胜率"）
+    match_val: 目标值
+    dist_label: 距离列的显示名
     """
     if df.empty:
         return []
@@ -91,8 +93,8 @@ def find_similar_matches(df, sport, d_wp, top_n=15):
         if not result or result in ("nan", "None", "—", "CANCEL"):
             continue
 
-        c_d_wp = _parse_pct(row.get("平局加权胜率"))
-        if c_d_wp is None:
+        c_val = _parse_pct(row.get(match_col))
+        if c_val is None:
             continue
 
         c_h_wp  = _parse_pct(row.get("主队加权胜率"))
@@ -101,17 +103,17 @@ def find_similar_matches(df, sport, d_wp, top_n=15):
         c_a_ev  = _parse_ev(row.get("客队期望值"))
 
         rows.append({
-            "距离(平局WP差)": round(abs(c_d_wp - d_wp), 1),
+            dist_label: round(abs(c_val - match_val), 1),
             "日期": row.get("日期", ""),
             "主队": row.get("主队", ""),
             "客队": row.get("客队", ""),
             "主队WP": c_h_wp, "客队WP": c_a_wp,
             "主队EV": c_h_ev, "客队EV": c_a_ev,
-            "平局WP": f"{c_d_wp:.1f}%",
+            match_col: f"{c_val:.1f}%",
             "比赛结果": result,
         })
 
-    rows.sort(key=lambda x: x["距离(平局WP差)"])
+    rows.sort(key=lambda x: x[dist_label])
     return rows[:top_n]
 
 def show_similar_table(similar, sport="足球", session_key="similar_stats"):
@@ -121,10 +123,10 @@ def show_similar_table(similar, sport="足球", session_key="similar_stats"):
         st.session_state[session_key] = ""
         return
 
-    show_df = pd.DataFrame(similar)[[
-        "日期","主队","客队","主队WP","客队WP",
-        "主队EV","客队EV","平局WP","比赛结果","距离(平局WP差)"
-    ]]
+    # 动态列：把固定列 + 额外列（匹配字段、距离）合并显示
+    base_cols = ["日期","主队","客队","主队WP","客队WP","主队EV","客队EV","比赛结果"]
+    extra_cols = [c for c in similar[0].keys() if c not in base_cols]
+    show_df = pd.DataFrame(similar)[base_cols + extra_cols]
     st.dataframe(show_df, use_container_width=True, hide_index=True)
 
     # 统计胜平负
@@ -329,11 +331,10 @@ with tab1:
         # ── 相似历史比赛 ──────────────────────────────────────────────────
         st.divider()
         st.subheader("📊 相似历史比赛参考")
-        st.caption("根据「平局WP」找出历史上最接近的15场比赛，仅供参考")
+        st.caption("根据相似指标找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        d_wp = r.get("draw_prob", 0) * 100
-        similar = find_similar_matches(history_df, "电竞", d_wp=d_wp, top_n=15)
+        similar = find_similar_matches(history_df, "电竞", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(客队WP差)", top_n=15)
 
         show_similar_table(similar, sport="电竞", session_key="e_similar_stats")
 
@@ -485,11 +486,10 @@ with tab2:
         # ── 相似历史比赛 ──────────────────────────────────────────────────
         st.divider()
         st.subheader("📊 相似历史比赛参考")
-        st.caption("根据「平局WP」找出历史上最接近的15场比赛，仅供参考")
+        st.caption("根据相似指标找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        d_wp = r.get("draw_prob", 0) * 100
-        similar = find_similar_matches(history_df, "足球", d_wp=d_wp, top_n=15)
+        similar = find_similar_matches(history_df, "足球", match_val=r["draw_prob"]*100, match_col="平局加权胜率", dist_label="距离(平局WP差)", top_n=15)
 
         show_similar_table(similar, sport="足球", session_key="f_similar_stats")
 
@@ -769,11 +769,10 @@ with tab4:
         # ── 相似历史比赛 ──────────────────────────────────────────────────
         st.divider()
         st.subheader("📊 相似历史比赛参考")
-        st.caption("根据「平局WP」找出历史上最接近的15场比赛，仅供参考")
+        st.caption("根据相似指标找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        d_wp = r.get("draw_prob", 0) * 100
-        similar = find_similar_matches(history_df, "棒球", d_wp=d_wp, top_n=15)
+        similar = find_similar_matches(history_df, "棒球", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(客队WP差)", top_n=15)
 
         show_similar_table(similar, sport="棒球", session_key="bb_similar_stats")
 
