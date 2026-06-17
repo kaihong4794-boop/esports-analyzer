@@ -73,9 +73,9 @@ def _parse_ev(val):
     except:
         return None
 
-def find_similar_matches(df, sport, d_impl, top_n=15):
+def find_similar_matches(df, sport, d_wp, top_n=15):
     """
-    在历史数据df中找出与新比赛「平局隐含概率」最接近的场次。
+    在历史数据df中找出与新比赛「平局WP」最接近的场次。
     只比较同一运动(sport)、且有比赛结果记录的场次。
     """
     if df.empty:
@@ -91,8 +91,8 @@ def find_similar_matches(df, sport, d_impl, top_n=15):
         if not result or result in ("nan", "None", "—", "CANCEL"):
             continue
 
-        c_d_impl = _parse_pct(row.get("平局隐含概率"))
-        if c_d_impl is None:
+        c_d_wp = _parse_pct(row.get("平局加权胜率"))
+        if c_d_wp is None:
             continue
 
         c_h_wp  = _parse_pct(row.get("主队加权胜率"))
@@ -101,17 +101,17 @@ def find_similar_matches(df, sport, d_impl, top_n=15):
         c_a_ev  = _parse_ev(row.get("客队期望值"))
 
         rows.append({
-            "距离(平局隐含概率差)": round(abs(c_d_impl - d_impl), 1),
+            "距离(平局WP差)": round(abs(c_d_wp - d_wp), 1),
             "日期": row.get("日期", ""),
             "主队": row.get("主队", ""),
             "客队": row.get("客队", ""),
             "主队WP": c_h_wp, "客队WP": c_a_wp,
             "主队EV": c_h_ev, "客队EV": c_a_ev,
-            "平局隐含概率": f"{c_d_impl:.1f}%",
+            "平局WP": f"{c_d_wp:.1f}%",
             "比赛结果": result,
         })
 
-    rows.sort(key=lambda x: x["距离(平局隐含概率差)"])
+    rows.sort(key=lambda x: x["距离(平局WP差)"])
     return rows[:top_n]
 
 def show_similar_table(similar, sport="足球", session_key="similar_stats"):
@@ -123,7 +123,7 @@ def show_similar_table(similar, sport="足球", session_key="similar_stats"):
 
     show_df = pd.DataFrame(similar)[[
         "日期","主队","客队","主队WP","客队WP",
-        "主队EV","客队EV","平局隐含概率","比赛结果","距离(平局隐含概率差)"
+        "主队EV","客队EV","平局WP","比赛结果","距离(平局WP差)"
     ]]
     st.dataframe(show_df, use_container_width=True, hide_index=True)
 
@@ -329,11 +329,11 @@ with tab1:
         # ── 相似历史比赛 ──────────────────────────────────────────────────
         st.divider()
         st.subheader("📊 相似历史比赛参考")
-        st.caption("根据「平局隐含概率」找出历史上最接近的15场比赛，仅供参考")
+        st.caption("根据「平局WP」找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        d_impl = 0.0  # 电竞无平局赔率，隐含概率设0（匹配时找最接近0的历史场次）
-        similar = find_similar_matches(history_df, "电竞", d_impl=d_impl, top_n=15)
+        d_wp = r.get("draw_prob", 0) * 100
+        similar = find_similar_matches(history_df, "电竞", d_wp=d_wp, top_n=15)
 
         show_similar_table(similar, sport="电竞", session_key="e_similar_stats")
 
@@ -485,11 +485,11 @@ with tab2:
         # ── 相似历史比赛 ──────────────────────────────────────────────────
         st.divider()
         st.subheader("📊 相似历史比赛参考")
-        st.caption("根据「平局隐含概率」找出历史上最接近的15场比赛，仅供参考")
+        st.caption("根据「平局WP」找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        d_impl = (1 / r["d_odds"]) * 100
-        similar = find_similar_matches(history_df, "足球", d_impl=d_impl, top_n=15)
+        d_wp = r.get("draw_prob", 0) * 100
+        similar = find_similar_matches(history_df, "足球", d_wp=d_wp, top_n=15)
 
         show_similar_table(similar, sport="足球", session_key="f_similar_stats")
 
@@ -769,11 +769,11 @@ with tab4:
         # ── 相似历史比赛 ──────────────────────────────────────────────────
         st.divider()
         st.subheader("📊 相似历史比赛参考")
-        st.caption("根据「平局隐含概率」找出历史上最接近的15场比赛，仅供参考")
+        st.caption("根据「平局WP」找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        d_impl = 0.0  # 棒球无平局
-        similar = find_similar_matches(history_df, "棒球", d_impl=d_impl, top_n=15)
+        d_wp = r.get("draw_prob", 0) * 100
+        similar = find_similar_matches(history_df, "棒球", d_wp=d_wp, top_n=15)
 
         show_similar_table(similar, sport="棒球", session_key="bb_similar_stats")
 
