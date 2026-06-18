@@ -398,9 +398,11 @@ with tab2:
             base = 1.0 - (i * 0.1)
             venue_multiplier = 1.2 if info["is_home"] else 0.8
             final_weight = base * info["weight"] * venue_multiplier * home_boost
+            # 平局固定用主场参数（home_boost=1.2），主客队一致
+            draw_final_weight = base * info["weight"] * venue_multiplier * 1.2
             total_w += base
             win_w   += info["is_win"]  * final_weight
-            draw_w  += info["is_draw"] * final_weight * 0.5
+            draw_w  += info["is_draw"] * draw_final_weight * 0.5
         return (win_w/total_w if total_w > 0 else 0), (draw_w/total_w if total_w > 0 else 0)
 
     st.subheader("近期比赛记录")
