@@ -118,7 +118,7 @@ def find_similar_matches(df, sport, match_val, match_col, dist_label, top_n=15, 
             "比赛结果": result,
         })
 
-    rows.sort(key=lambda x: (x[dist_label], x["_sec_dist"]))
+    rows.sort(key=lambda x: (float(x[dist_label]), float(x["_sec_dist"])))
     return rows[:top_n]
 
 def show_similar_table(similar, sport="足球", session_key="similar_stats"):
