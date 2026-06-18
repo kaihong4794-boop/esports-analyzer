@@ -73,12 +73,11 @@ def _parse_ev(val):
     except:
         return None
 
-def find_similar_matches(df, sport, match_val, match_col, dist_label, top_n=15):
+def find_similar_matches(df, sport, match_val, match_col, dist_label, top_n=15, sec_val=None, sec_col=None):
     """
     在历史数据df中找出最接近的场次。
-    match_col: 用于匹配的列名（如"平局加权胜率"、"客队加权胜率"）
-    match_val: 目标值
-    dist_label: 距离列的显示名
+    match_col: 主排序列（如"客队加权胜率"、"平局加权胜率"）
+    sec_col:   次排序列（如"主队期望值"），可选
     """
     if df.empty:
         return []
@@ -102,8 +101,14 @@ def find_similar_matches(df, sport, match_val, match_col, dist_label, top_n=15):
         c_h_ev  = _parse_ev(row.get("主队期望值"))
         c_a_ev  = _parse_ev(row.get("客队期望值"))
 
+        sec_dist = 0
+        if sec_val is not None and sec_col is not None:
+            c_sec = _parse_ev(row.get(sec_col)) if "EV" in sec_col or "期望值" in sec_col else _parse_pct(row.get(sec_col))
+            sec_dist = abs(c_sec - sec_val) if c_sec is not None else 9999
+
         rows.append({
             dist_label: round(abs(c_val - match_val), 1),
+            "_sec_dist": sec_dist,
             "日期": row.get("日期", ""),
             "主队": row.get("主队", ""),
             "客队": row.get("客队", ""),
@@ -113,7 +118,7 @@ def find_similar_matches(df, sport, match_val, match_col, dist_label, top_n=15):
             "比赛结果": result,
         })
 
-    rows.sort(key=lambda x: x[dist_label])
+    rows.sort(key=lambda x: (x[dist_label], x["_sec_dist"]))
     return rows[:top_n]
 
 def show_similar_table(similar, sport="足球", session_key="similar_stats"):
@@ -125,7 +130,7 @@ def show_similar_table(similar, sport="足球", session_key="similar_stats"):
 
     # 动态列：把固定列 + 额外列（匹配字段、距离）合并显示
     base_cols = ["日期","主队","客队","主队WP","客队WP","主队EV","客队EV","比赛结果"]
-    extra_cols = [c for c in similar[0].keys() if c not in base_cols]
+    extra_cols = [c for c in similar[0].keys() if c not in base_cols and not c.startswith("_")]
     show_df = pd.DataFrame(similar)[base_cols + extra_cols]
     st.dataframe(show_df, use_container_width=True, hide_index=True)
 
@@ -334,7 +339,7 @@ with tab1:
         st.caption("根据相似指标找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "电竞", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(客队WP差)", top_n=15)
+        similar = find_similar_matches(history_df, "电竞", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(客队WP差)", top_n=15, sec_val=r["h_ev"], sec_col="主队期望值")
 
         show_similar_table(similar, sport="电竞", session_key="e_similar_stats")
 
@@ -772,7 +777,7 @@ with tab4:
         st.caption("根据相似指标找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "棒球", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(客队WP差)", top_n=15)
+        similar = find_similar_matches(history_df, "棒球", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(客队WP差)", top_n=15, sec_val=r["h_ev"], sec_col="主队期望值")
 
         show_similar_table(similar, sport="棒球", session_key="bb_similar_stats")
 
