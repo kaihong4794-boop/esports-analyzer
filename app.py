@@ -73,7 +73,7 @@ def _parse_ev(val):
     except:
         return None
 
-def find_similar_matches(df, sport, match_val, match_col, dist_label, top_n=15, sec_val=None, sec_col=None):
+def find_similar_matches(df, sport, match_val, match_col, dist_label, top_n=15, sec_val=None, sec_col=None, h_wr_val=None):
     """
     在历史数据df中找出最接近的场次。
     match_col: 主排序列（如"客队加权胜率"、"平局加权胜率"）
@@ -106,8 +106,14 @@ def find_similar_matches(df, sport, match_val, match_col, dist_label, top_n=15, 
             c_sec = _parse_ev(row.get(sec_col)) if "EV" in sec_col or "期望值" in sec_col else _parse_pct(row.get(sec_col))
             sec_dist = abs(c_sec - sec_val) if c_sec is not None else 9999
 
+        # 主队WP距离（若提供）
+        h_wr_dist = 0
+        if h_wr_val is not None:
+            h_wr_dist = abs(c_h_wp - h_wr_val) if c_h_wp is not None else 9999
+
+        combined_wp_dist = round(abs(c_val - match_val) + h_wr_dist, 1)
         rows.append({
-            dist_label: round(abs(c_val - match_val), 1),
+            dist_label: combined_wp_dist,
             "_sec_dist": sec_dist,
             "日期": row.get("日期", ""),
             "主队": row.get("主队", ""),
@@ -339,7 +345,7 @@ with tab1:
         st.caption("根据相似指标找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "电竞", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(客队WP差)", top_n=15, sec_val=r["h_ev"], sec_col="主队期望值")
+        similar = find_similar_matches(history_df, "电竞", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(WP差)", top_n=15, sec_val=r["h_ev"], sec_col="主队期望值", h_wr_val=r["h_wr"]*100)
 
         show_similar_table(similar, sport="电竞", session_key="e_similar_stats")
 
@@ -777,7 +783,7 @@ with tab4:
         st.caption("根据相似指标找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "棒球", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(客队WP差)", top_n=15, sec_val=r["h_ev"], sec_col="主队期望值")
+        similar = find_similar_matches(history_df, "棒球", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(WP差)", top_n=15, sec_val=r["h_ev"], sec_col="主队期望值", h_wr_val=r["h_wr"]*100)
 
         show_similar_table(similar, sport="棒球", session_key="bb_similar_stats")
 
