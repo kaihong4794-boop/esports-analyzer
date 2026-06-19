@@ -505,7 +505,7 @@ with tab2:
         st.caption("根据相似指标找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "足球", match_val=r["draw_prob"]*100, match_col="平局加权胜率", dist_label="距离(WP差)", top_n=15, h_wr_val=r["h_wr"]*100, a_wr_val=r["a_wr"]*100)
+        similar = find_similar_matches(history_df, "足球", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(WP差)", top_n=15, h_wr_val=r["h_wr"]*100)
 
         show_similar_table(similar, sport="足球", session_key="f_similar_stats")
 
