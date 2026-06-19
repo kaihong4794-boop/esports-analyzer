@@ -447,8 +447,8 @@ with tab2:
 
     if st.button("⚡ 计算", key="f_calc", type="primary"):
         h_wr, h_dr = calc_football_winrate(f_home_vars, True,  venue)
-        a_wr, a_dr = calc_football_winrate(f_away_vars, False, venue)
-        draw_prob  = (h_dr + a_dr) / 2
+        a_wr, _    = calc_football_winrate(f_away_vars, False, venue)
+        draw_prob  = h_dr  # 只用主队平局参数
         h_ev = (h_wr * (f_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr * (f_away_odds-1)*100) - ((1-a_wr)*100)
         d_ev = (draw_prob * (f_draw_odds-1)*100) - ((1-draw_prob)*100)
@@ -505,7 +505,7 @@ with tab2:
         st.caption("根据相似指标找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "足球", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(WP差)", top_n=15, h_wr_val=r["h_wr"]*100)
+        similar = find_similar_matches(history_df, "足球", match_val=r["draw_prob"]*100, match_col="平局加权胜率", dist_label="距离(平局WP差)", top_n=15)
 
         show_similar_table(similar, sport="足球", session_key="f_similar_stats")
 
