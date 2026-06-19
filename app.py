@@ -446,9 +446,9 @@ with tab2:
                 f_away_vars.append("✈️ 客场小胜")
 
     if st.button("⚡ 计算", key="f_calc", type="primary"):
-        h_wr, h_dr = calc_football_winrate(f_home_vars, True,  venue)
-        a_wr, _    = calc_football_winrate(f_away_vars, False, venue)
-        draw_prob  = h_dr  # 只用主队平局参数
+        h_wr, _    = calc_football_winrate(f_home_vars, True,  venue)
+        a_wr, a_dr = calc_football_winrate(f_away_vars, False, venue)
+        draw_prob  = a_dr  # 只用客队平局参数
         h_ev = (h_wr * (f_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr * (f_away_odds-1)*100) - ((1-a_wr)*100)
         d_ev = (draw_prob * (f_draw_odds-1)*100) - ((1-draw_prob)*100)
