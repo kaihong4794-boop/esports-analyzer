@@ -73,7 +73,7 @@ def _parse_ev(val):
     except:
         return None
 
-def find_similar_matches(df, sport, match_val, match_col, dist_label, top_n=15, sec_val=None, sec_col=None, h_wr_val=None):
+def find_similar_matches(df, sport, match_val, match_col, dist_label, top_n=15, sec_val=None, sec_col=None, h_wr_val=None, a_wr_val=None):
     """
     在历史数据df中找出最接近的场次。
     match_col: 主排序列（如"客队加权胜率"、"平局加权胜率"）
@@ -111,7 +111,12 @@ def find_similar_matches(df, sport, match_val, match_col, dist_label, top_n=15, 
         if h_wr_val is not None:
             h_wr_dist = abs(c_h_wp - h_wr_val) if c_h_wp is not None else 9999
 
-        combined_wp_dist = round(abs(c_val - match_val) + h_wr_dist, 1)
+        # 客队WP距离（若提供）
+        a_wr_dist = 0
+        if a_wr_val is not None:
+            a_wr_dist = abs(c_a_wp - a_wr_val) if c_a_wp is not None else 9999
+
+        combined_wp_dist = round(abs(c_val - match_val) + h_wr_dist + a_wr_dist, 1)
         rows.append({
             dist_label: combined_wp_dist,
             "_sec_dist": sec_dist,
@@ -398,11 +403,9 @@ with tab2:
             base = 1.0 - (i * 0.1)
             venue_multiplier = 1.2 if info["is_home"] else 0.8
             final_weight = base * info["weight"] * venue_multiplier * home_boost
-            # 平局固定用主场参数（home_boost=1.2），主客队一致
-            draw_final_weight = base * info["weight"] * venue_multiplier * 1.2
             total_w += base
             win_w   += info["is_win"]  * final_weight
-            draw_w  += info["is_draw"] * draw_final_weight * 0.5
+            draw_w  += info["is_draw"] * final_weight * 0.5
         return (win_w/total_w if total_w > 0 else 0), (draw_w/total_w if total_w > 0 else 0)
 
     st.subheader("近期比赛记录")
@@ -502,7 +505,7 @@ with tab2:
         st.caption("根据相似指标找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "足球", match_val=r["draw_prob"]*100, match_col="平局加权胜率", dist_label="距离(平局WP差)", top_n=15)
+        similar = find_similar_matches(history_df, "足球", match_val=r["draw_prob"]*100, match_col="平局加权胜率", dist_label="距离(WP差)", top_n=15, h_wr_val=r["h_wr"]*100, a_wr_val=r["a_wr"]*100)
 
         show_similar_table(similar, sport="足球", session_key="f_similar_stats")
 
