@@ -388,7 +388,7 @@ with tab2:
     with col3: f_home_odds = st.number_input("主队赔率", min_value=1.01, value=2.0, step=0.01, key="f_home_odds")
     with col4: f_draw_odds = st.number_input("平局赔率", min_value=1.01, value=3.0, step=0.01, key="f_draw_odds")
     with col5: f_away_odds = st.number_input("客队赔率", min_value=1.01, value=3.5, step=0.01, key="f_away_odds")
-    with col6: venue = st.selectbox("场地", ["主队主场", "客队主场", "中立场"], key="f_venue")
+    with col6: venue = st.selectbox("场地", ["中立场", "主队主场", "客队主场"], key="f_venue")
 
     st.divider()
     num_matches_f = st.slider("最近几场比赛？", 1, 5, 5, key="f_slider")
