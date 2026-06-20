@@ -384,25 +384,21 @@ with tab2:
     with col1: f_home_name = st.text_input("主队名字", "主队", key="f_home_name")
     with col2: f_away_name = st.text_input("客队名字", "客队", key="f_away_name")
 
-    col3, col4, col5, col6 = st.columns([2, 2, 2, 2])
+    col3, col4, col5 = st.columns(3)
     with col3: f_home_odds = st.number_input("主队赔率", min_value=1.01, value=2.0, step=0.01, key="f_home_odds")
     with col4: f_draw_odds = st.number_input("平局赔率", min_value=1.01, value=3.0, step=0.01, key="f_draw_odds")
     with col5: f_away_odds = st.number_input("客队赔率", min_value=1.01, value=3.5, step=0.01, key="f_away_odds")
-    with col6: venue = st.selectbox("场地", ["中立场", "主队主场", "客队主场"], key="f_venue")
 
     st.divider()
     num_matches_f = st.slider("最近几场比赛？", 1, 5, 5, key="f_slider")
 
-    def calc_football_winrate(matches, is_playing_home, venue):
-        if venue == "主队主场":   home_boost = 1.2 if is_playing_home else 0.8
-        elif venue == "客队主场": home_boost = 0.8 if is_playing_home else 1.2
-        else:                     home_boost = 1.0
+    def calc_football_winrate(matches, is_playing_home):
+        # 纯净版：不分主客场，只看近期战绩加权（跟电竞Tab同一套逻辑）
         total_w = win_w = draw_w = 0
         for i, result in enumerate(matches):
             info = football_results[result]
             base = 1.0 - (i * 0.1)
-            venue_multiplier = 1.2 if info["is_home"] else 0.8
-            final_weight = base * info["weight"] * venue_multiplier * home_boost
+            final_weight = base * info["weight"]
             total_w += base
             win_w   += info["is_win"]  * final_weight
             draw_w  += info["is_draw"] * final_weight * 0.5
@@ -446,8 +442,8 @@ with tab2:
                 f_away_vars.append("✈️ 客场小胜")
 
     if st.button("⚡ 计算", key="f_calc", type="primary"):
-        h_wr, h_dr = calc_football_winrate(f_home_vars, True,  venue)
-        a_wr, a_dr = calc_football_winrate(f_away_vars, False, venue)
+        h_wr, h_dr = calc_football_winrate(f_home_vars, True)
+        a_wr, a_dr = calc_football_winrate(f_away_vars, False)
         draw_prob  = (h_dr + a_dr) / 2  # 两队平均
         h_ev = (h_wr * (f_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr * (f_away_odds-1)*100) - ((1-a_wr)*100)
