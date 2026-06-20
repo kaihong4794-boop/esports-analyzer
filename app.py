@@ -529,6 +529,34 @@ with tab2:
             save_to_sheet(record)
             st.success("✅ 记录已保存！比赛结束后请回来填写比赛结果，方便日后做相似比赛参考。")
 
+        # ── 🧪 实验：用电竞公式算这场足球（独立，不影响上面任何结果）──────────
+        st.divider()
+        with st.expander("🧪 实验区：用电竞公式重新算一次（纯净胜率对比）"):
+            st.caption("跟电竞Tab用同一套公式：近期战绩加权，不分主客场、不算平局。仅供观察对比，不影响上方任何结果或保存记录。")
+
+            def e_style_winrate(vars):
+                total_w = win_w = 0
+                for i, v in enumerate(vars):
+                    base = 1.0 - (i * 0.1)
+                    total_w += base
+                    win_w += (1 if "胜" in v else (0.5 if "平" in v else 0)) * base
+                return win_w / total_w if total_w > 0 else 0
+
+            exp_h_wr = e_style_winrate(f_home_vars)
+            exp_a_wr = e_style_winrate(f_away_vars)
+            exp_h_ev = (exp_h_wr * (f_home_odds - 1) * 100) - ((1 - exp_h_wr) * 100)
+            exp_a_ev = (exp_a_wr * (f_away_odds - 1) * 100) - ((1 - exp_a_wr) * 100)
+
+            ec1, ec2 = st.columns(2)
+            with ec1:
+                st.metric(f"{f_home_name} 纯净WP", f"{exp_h_wr:.1%}")
+                st.metric(f"{f_home_name} 纯净EV", f"RM{exp_h_ev:.2f}")
+            with ec2:
+                st.metric(f"{f_away_name} 纯净WP", f"{exp_a_wr:.1%}")
+                st.metric(f"{f_away_name} 纯净EV", f"RM{exp_a_ev:.2f}")
+
+            st.caption(f"对比正式结果：{f_home_name} WP {r['h_wr']:.1%} vs 纯净 {exp_h_wr:.1%}　|　{f_away_name} WP {r['a_wr']:.1%} vs 纯净 {exp_a_wr:.1%}")
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 3: 篮球
