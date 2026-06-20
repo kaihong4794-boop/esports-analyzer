@@ -562,10 +562,10 @@ with tab2:
             st.caption(f"对比正式结果：{f_home_name} WP {r['h_wr']:.1%} vs 纯净 {exp_h_wr:.1%}　|　{f_away_name} WP {r['a_wr']:.1%} vs 纯净 {exp_a_wr:.1%}")
 
             st.divider()
-            st.markdown("**📊 相似历史比赛参考（用纯净WP重新匹配）**")
-            st.caption("拿这场的纯净WP，重新在足球历史库里找最接近的场次，跟上方正式匹配结果对比")
-            exp_similar = find_similar_matches(history_df, "足球", match_val=exp_a_wr*100, match_col="客队加权胜率", dist_label="距离(WP差)", top_n=15, h_wr_val=exp_h_wr*100)
-            show_similar_table(exp_similar, sport="足球", session_key="f_exp_similar_stats")
+            st.markdown("**📊 相似历史比赛参考（电竞库）**")
+            st.caption("拿这场足球的纯净WP，去电竞历史库里找最接近的场次，纯粹观察规律用")
+            exp_similar = find_similar_matches(history_df, "电竞", match_val=exp_a_wr*100, match_col="客队加权胜率", dist_label="距离(WP差)", top_n=15, h_wr_val=exp_h_wr*100)
+            show_similar_table(exp_similar, sport="电竞", session_key="f_exp_similar_stats")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
