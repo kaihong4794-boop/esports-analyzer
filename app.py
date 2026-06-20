@@ -168,6 +168,27 @@ def show_similar_table(similar, sport="足球", session_key="similar_stats"):
             c2.metric("🤝 平局",   f"{draw}/{n}  ({draw/n:.0%})")
             c3.metric("✈️ 客队胜", f"{a_win}/{n}  ({a_win/n:.0%})")
             stats_str = f"主胜{h_win/n:.0%} 平{draw/n:.0%} 客胜{a_win/n:.0%}（{n}场）"
+
+            # 赢几球细分统计
+            h_win1 = h_win2plus = a_win1 = a_win2plus = 0
+            for m in similar:
+                score = str(m["比赛结果"]).strip()
+                mm = re.match(r"^(\d+)\s*-\s*(\d+)$", score)
+                if not mm: continue
+                hs, as_ = int(mm.group(1)), int(mm.group(2))
+                diff = hs - as_
+                if diff == 1: h_win1 += 1
+                elif diff >= 2: h_win2plus += 1
+                elif diff == -1: a_win1 += 1
+                elif diff <= -2: a_win2plus += 1
+
+            st.caption("比分细分（赢几球）")
+            d1, d2, d3, d4 = st.columns(4)
+            d1.metric("主胜1球", f"{h_win1}/{n} ({h_win1/n:.0%})")
+            d2.metric("主胜2+球", f"{h_win2plus}/{n} ({h_win2plus/n:.0%})")
+            d3.metric("客胜1球", f"{a_win1}/{n} ({a_win1/n:.0%})")
+            d4.metric("客胜2+球", f"{a_win2plus}/{n} ({a_win2plus/n:.0%})")
+            stats_str += f" | 主胜1球{h_win1/n:.0%} 主胜2+{h_win2plus/n:.0%} 客胜1球{a_win1/n:.0%} 客胜2+{a_win2plus/n:.0%}"
         else:
             c1, c2 = st.columns(2)
             c1.metric("🏠 主队胜", f"{h_win}/{n}  ({h_win/n:.0%})")
