@@ -181,16 +181,11 @@ def show_similar_table(similar, sport="足球", session_key="similar_stats"):
 
 # ─── 比赛结果权重 ──────────────────────────────────────────────────────────────
 football_results = {
-    "🏠 主场大胜": {"weight": 1.0,  "is_win": 1, "is_draw": 0, "is_home": True},
-    "🏠 主场小胜": {"weight": 0.75, "is_win": 1, "is_draw": 0, "is_home": True},
-    "🏠 主场平局": {"weight": 0.5,  "is_win": 0, "is_draw": 1, "is_home": True},
-    "🏠 主场小负": {"weight": 0.25, "is_win": 0, "is_draw": 0, "is_home": True},
-    "🏠 主场大负": {"weight": 0.05, "is_win": 0, "is_draw": 0, "is_home": True},
-    "✈️ 客场大胜": {"weight": 1.0,  "is_win": 1, "is_draw": 0, "is_home": False},
-    "✈️ 客场小胜": {"weight": 0.75, "is_win": 1, "is_draw": 0, "is_home": False},
-    "✈️ 客场平局": {"weight": 0.5,  "is_win": 0, "is_draw": 1, "is_home": False},
-    "✈️ 客场小负": {"weight": 0.25, "is_win": 0, "is_draw": 0, "is_home": False},
-    "✈️ 客场大负": {"weight": 0.05, "is_win": 0, "is_draw": 0, "is_home": False},
+    "大胜": {"weight": 1.0,  "is_win": 1, "is_draw": 0},
+    "小胜": {"weight": 0.75, "is_win": 1, "is_draw": 0},
+    "平局": {"weight": 0.5,  "is_win": 0, "is_draw": 1},
+    "小负": {"weight": 0.25, "is_win": 0, "is_draw": 0},
+    "大负": {"weight": 0.05, "is_win": 0, "is_draw": 0},
 }
 
 score_weights_esports = {
@@ -201,11 +196,9 @@ score_weights_esports = {
 }
 
 result_emoji_football = {
-    "🏠 主场大胜": "🏆 主场大胜 (≥+3)", "🏠 主场小胜": "✅ 主场小胜 (+1/+2)",
-    "🏠 主场平局": "➖ 主场平局",        "🏠 主场小负": "❌ 主场小负 (-1/-2)",
-    "🏠 主场大负": "💀 主场大负 (≤-3)", "✈️ 客场大胜": "🏆 客场大胜 (≥+3)",
-    "✈️ 客场小胜": "✅ 客场小胜 (+1/+2)", "✈️ 客场平局": "➖ 客场平局",
-    "✈️ 客场小负": "❌ 客场小负 (-1/-2)", "✈️ 客场大负": "💀 客场大负 (≤-3)",
+    "大胜": "🏆 大胜 (≥+3)", "小胜": "✅ 小胜 (+1/+2)",
+    "平局": "➖ 平局",        "小负": "❌ 小负 (-1/-2)",
+    "大负": "💀 大负 (≤-3)",
 }
 
 result_emoji_esports = {
@@ -217,19 +210,17 @@ result_emoji_esports = {
 }
 
 # ─── 比分转换 ─────────────────────────────────────────────────────────────────
-def score_to_football_result(score_str, is_home):
+def score_to_football_result(score_str):
+    """score_str格式为「自己得分-对手得分」，不分主客场"""
     score_str = score_str.strip()
     if not re.match(r'^\d+-\d+$', score_str): return None
     try:
-        home_score, away_score = map(int, score_str.split('-'))
+        my_score, opp_score = map(int, score_str.split('-'))
     except: return None
-    my_score  = home_score if is_home else away_score
-    opp_score = away_score if is_home else home_score
-    diff  = abs(my_score - opp_score)
-    venue = "🏠 主场" if is_home else "✈️ 客场"
-    if my_score > opp_score:   return f"{venue}大胜" if diff >= 3 else f"{venue}小胜"
-    elif my_score == opp_score: return f"{venue}平局"
-    else:                       return f"{venue}大负" if diff >= 3 else f"{venue}小负"
+    diff = abs(my_score - opp_score)
+    if my_score > opp_score:   return "大胜" if diff >= 3 else "小胜"
+    elif my_score == opp_score: return "平局"
+    else:                       return "大负" if diff >= 3 else "小负"
 
 def score_to_esports_result(score_str):
     score_str = score_str.strip()
@@ -405,41 +396,37 @@ with tab2:
         return (win_w/total_w if total_w > 0 else 0), (draw_w/total_w if total_w > 0 else 0)
 
     st.subheader("近期比赛记录")
-    st.caption("填实际比分（主队得分-客队得分）+ 选该队是主场还是客场 | 大胜/大负 = 差距≥3球")
+    st.caption("填实际比分（自己得分-对手得分），如 2-1 = 自己赢2比1 | 大胜/大负 = 差距≥3球")
 
     valid_keys = list(football_results.keys())
     col_h2, col_a2 = st.columns(2)
     f_home_vars, f_away_vars = [], []
 
     with col_h2:
-        st.markdown(f"**🏠 {f_home_name}**")
+        st.markdown(f"**{f_home_name}**")
         for i in range(num_matches_f):
             label = "最新" if i == 0 else f"第{i+1}场"
-            c1, c2 = st.columns([2, 1])
-            with c1: score_input = st.text_input(label, value="", placeholder="主队-客队 如 2-1", key=f"fh_{i}")
-            with c2: venue_sel = st.selectbox("", ["主场🏠", "客场✈️"], key=f"fh_venue_{i}", label_visibility="collapsed")
-            result = score_to_football_result(score_input, "主场" in venue_sel)
+            score_input = st.text_input(label, value="", placeholder="自己-对手 如 2-1", key=f"fh_{i}")
+            result = score_to_football_result(score_input)
             if result and result in valid_keys:
                 st.caption(f"→ {result_emoji_football.get(result, result)}")
                 f_home_vars.append(result)
             else:
                 if score_input: st.caption("⚠️ 格式错误")
-                f_home_vars.append("🏠 主场小胜")
+                f_home_vars.append("小胜")
 
     with col_a2:
-        st.markdown(f"**✈️ {f_away_name}**")
+        st.markdown(f"**{f_away_name}**")
         for i in range(num_matches_f):
             label = "最新" if i == 0 else f"第{i+1}场"
-            c1, c2 = st.columns([2, 1])
-            with c1: score_input = st.text_input(label, value="", placeholder="主队-客队 如 2-1", key=f"fa_{i}")
-            with c2: venue_sel = st.selectbox("", ["主场🏠", "客场✈️"], index=1, key=f"fa_venue_{i}", label_visibility="collapsed")
-            result = score_to_football_result(score_input, "主场" in venue_sel)
+            score_input = st.text_input(label, value="", placeholder="自己-对手 如 2-1", key=f"fa_{i}")
+            result = score_to_football_result(score_input)
             if result and result in valid_keys:
                 st.caption(f"→ {result_emoji_football.get(result, result)}")
                 f_away_vars.append(result)
             else:
                 if score_input: st.caption("⚠️ 格式错误")
-                f_away_vars.append("✈️ 客场小胜")
+                f_away_vars.append("小胜")
 
     if st.button("⚡ 计算", key="f_calc", type="primary"):
         h_wr, h_dr = calc_football_winrate(f_home_vars, True)
