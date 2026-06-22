@@ -413,23 +413,23 @@ with tab2:
 
     st.divider()
     num_matches_f = st.slider("最近几场比赛？", 1, 5, 5, key="f_slider")
+    st.caption("填实际比分（自己得分-对手得分）| 球差≥3=3-0/0-3  球差2=2-0/0-2  球差1=2-1/1-2  平局=1-1")
 
-    def calc_football_winrate(matches, is_playing_home):
-        # 纯净版：不分主客场，只看近期战绩加权（跟电竞Tab同一套逻辑）
-        total_w = win_w = draw_w = 0
-        for i, result in enumerate(matches):
-            info = football_results[result]
-            base = 1.0 - (i * 0.1)
-            final_weight = base * info["weight"]
-            total_w += base
-            win_w   += info["is_win"]  * final_weight
-            draw_w  += info["is_draw"] * final_weight * 0.5
-        return (win_w/total_w if total_w > 0 else 0), (draw_w/total_w if total_w > 0 else 0)
+    def score_to_football_esports(score_str):
+        """把足球比分差距转成电竞格式：赢3+→3-0赢 赢2→2-0赢 赢1→2-1赢 平→1-1平 输1→1-2输 输2→0-2输 输3+→0-3输"""
+        score_str = score_str.strip()
+        if not re.match(r'^\d+-\d+$', score_str): return None
+        try: my, opp = map(int, score_str.split('-'))
+        except: return None
+        diff = my - opp
+        if diff >= 3:   return "3-0 赢"
+        elif diff == 2: return "2-0 赢"
+        elif diff == 1: return "2-1 赢"
+        elif diff == 0: return "1-1 平"
+        elif diff == -1: return "1-2 输"
+        elif diff == -2: return "0-2 输"
+        else:            return "0-3 输"
 
-    st.subheader("近期比赛记录")
-    st.caption("填实际比分（自己得分-对手得分），如 2-1 = 自己赢2比1 | 大胜/大负 = 差距≥3球")
-
-    valid_keys = list(football_results.keys())
     col_h2, col_a2 = st.columns(2)
     f_home_vars, f_away_vars = [], []
 
@@ -438,37 +438,44 @@ with tab2:
         for i in range(num_matches_f):
             label = "最新" if i == 0 else f"第{i+1}场"
             score_input = st.text_input(label, value="", placeholder="自己-对手 如 2-1", key=f"fh_{i}")
-            result = score_to_football_result(score_input)
-            if result and result in valid_keys:
-                st.caption(f"→ {result_emoji_football.get(result, result)}")
+            result = score_to_football_esports(score_input)
+            if result:
+                st.caption(f"→ {result_emoji_esports.get(result, result)}")
                 f_home_vars.append(result)
             else:
                 if score_input: st.caption("⚠️ 格式错误")
-                f_home_vars.append("小胜")
+                f_home_vars.append("2-1 赢")
 
     with col_a2:
         st.markdown(f"**{f_away_name}**")
         for i in range(num_matches_f):
             label = "最新" if i == 0 else f"第{i+1}场"
             score_input = st.text_input(label, value="", placeholder="自己-对手 如 2-1", key=f"fa_{i}")
-            result = score_to_football_result(score_input)
-            if result and result in valid_keys:
-                st.caption(f"→ {result_emoji_football.get(result, result)}")
+            result = score_to_football_esports(score_input)
+            if result:
+                st.caption(f"→ {result_emoji_esports.get(result, result)}")
                 f_away_vars.append(result)
             else:
                 if score_input: st.caption("⚠️ 格式错误")
-                f_away_vars.append("小胜")
+                f_away_vars.append("2-1 赢")
 
     if st.button("⚡ 计算", key="f_calc", type="primary"):
-        h_wr, h_dr = calc_football_winrate(f_home_vars, True)
-        a_wr, a_dr = calc_football_winrate(f_away_vars, False)
-        draw_prob  = (h_dr + a_dr) / 2  # 两队平均
+        def f_winrate(vars, weights):
+            """完全跟电竞一样的参数"""
+            total_w = win_w = 0
+            for i, v in enumerate(vars):
+                base    = 1.0 - (i * 0.1)
+                total_w += base
+                win_w   += (1 if "赢" in v else (0.5 if "平" in v else 0)) * weights[v] * base
+            return win_w / total_w if total_w > 0 else 0
+
+        h_wr = f_winrate(f_home_vars, score_weights_esports)
+        a_wr = f_winrate(f_away_vars, score_weights_esports)
         h_ev = (h_wr * (f_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr * (f_away_odds-1)*100) - ((1-a_wr)*100)
-        d_ev = (draw_prob * (f_draw_odds-1)*100) - ((1-draw_prob)*100)
         st.session_state["f_result"] = {
-            "h_wr": h_wr, "a_wr": a_wr, "draw_prob": draw_prob,
-            "h_ev": h_ev, "a_ev": a_ev, "d_ev": d_ev,
+            "h_wr": h_wr, "a_wr": a_wr,
+            "h_ev": h_ev, "a_ev": a_ev,
             "h_odds": f_home_odds, "a_odds": f_away_odds, "d_odds": f_draw_odds,
             "h_name": f_home_name, "a_name": f_away_name,
         }
@@ -481,24 +488,19 @@ with tab2:
         h_adv = r["h_wr"]*100 - h_impl
         a_adv = r["a_wr"]*100 - a_impl
 
-        col9, col10, col11 = st.columns(3)
+        col9, col11 = st.columns(2)
         with col9:
             st.subheader(f_home_name)
             st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}")
             st.metric("期望值 (EV)",   f"RM{r['h_ev']:.2f}")
             st.metric("隐含概率",       f"{h_impl:.1f}%")
-        with col10:
-            st.subheader("平局")
-            st.metric("平局概率",       f"{r['draw_prob']:.1%}")
-            st.metric("期望值 (EV)",   f"RM{r['d_ev']:.2f}")
-            st.metric("隐含概率",       f"{1/r['d_odds']:.1%}")
-            if r["d_ev"] > 0: st.success("✅ 正期望值")
-            else:             st.error("❌ 负期望值")
         with col11:
             st.subheader(f_away_name)
             st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}")
             st.metric("期望值 (EV)",   f"RM{r['a_ev']:.2f}")
             st.metric("隐含概率",       f"{a_impl:.1f}%")
+
+        st.caption(f"平局赔率参考：{r['d_odds']}（隐含概率 {1/r['d_odds']*100:.1f}%）")
 
         # ── EV逆向信号 ────────────────────────────────────────────────────
         st.divider()
@@ -519,7 +521,7 @@ with tab2:
         st.caption("根据相似指标找出历史上最接近的15场比赛，仅供参考")
 
         history_df = load_from_sheet()
-        similar = find_similar_matches(history_df, "足球", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(WP差)", top_n=15, h_wr_val=r["h_wr"]*100, d_wr_val=r["draw_prob"]*100)
+        similar = find_similar_matches(history_df, "足球", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(WP差)", top_n=15, h_wr_val=r["h_wr"]*100)
 
         show_similar_table(similar, sport="足球", session_key="f_similar_stats")
 
@@ -528,54 +530,19 @@ with tab2:
             record = {
                 "日期": str(date.today()), "运动": "足球",
                 "主队": r["h_name"], "客队": r["a_name"],
-                "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": f"{r['draw_prob']:.1%}",
+                "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": "N/A",
                 "客队加权胜率": f"{r['a_wr']:.1%}",
-                "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": f"{r['d_ev']:.2f}",
+                "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A",
                 "客队期望值": f"{r['a_ev']:.2f}",
                 "主队隐含概率": f"{h_impl:.1f}%", "平局隐含概率": f"{1/r['d_odds']*100:.1f}%",
                 "客队隐含概率": f"{a_impl:.1f}%",
-                "主队优势差距": f"{h_adv:+.1f}%",
-                "平局优势差距": f"{r['draw_prob']*100 - 1/r['d_odds']*100:+.1f}%",
+                "主队优势差距": f"{h_adv:+.1f}%", "平局优势差距": "N/A",
                 "客队优势差距": f"{a_adv:+.1f}%",
                 "比赛结果": "", "甜蜜点": st.session_state.get("f_similar_stats", ""),
                 "建议下注": "", "押注方向": "", "投注结果": "",
             }
             save_to_sheet(record)
             st.success("✅ 记录已保存！比赛结束后请回来填写比赛结果，方便日后做相似比赛参考。")
-
-        # ── 🧪 实验：用电竞公式算这场足球（独立，不影响上面任何结果）──────────
-        st.divider()
-        with st.expander("🧪 实验区：用电竞公式重新算一次（纯净胜率对比）"):
-            st.caption("跟电竞Tab用同一套公式：近期战绩加权，不分主客场、不算平局。仅供观察对比，不影响上方任何结果或保存记录。")
-
-            def e_style_winrate(vars):
-                total_w = win_w = 0
-                for i, v in enumerate(vars):
-                    base = 1.0 - (i * 0.1)
-                    total_w += base
-                    win_w += (1 if "胜" in v else (0.5 if "平" in v else 0)) * base
-                return win_w / total_w if total_w > 0 else 0
-
-            exp_h_wr = e_style_winrate(f_home_vars)
-            exp_a_wr = e_style_winrate(f_away_vars)
-            exp_h_ev = (exp_h_wr * (f_home_odds - 1) * 100) - ((1 - exp_h_wr) * 100)
-            exp_a_ev = (exp_a_wr * (f_away_odds - 1) * 100) - ((1 - exp_a_wr) * 100)
-
-            ec1, ec2 = st.columns(2)
-            with ec1:
-                st.metric(f"{f_home_name} 纯净WP", f"{exp_h_wr:.1%}")
-                st.metric(f"{f_home_name} 纯净EV", f"RM{exp_h_ev:.2f}")
-            with ec2:
-                st.metric(f"{f_away_name} 纯净WP", f"{exp_a_wr:.1%}")
-                st.metric(f"{f_away_name} 纯净EV", f"RM{exp_a_ev:.2f}")
-
-            st.caption(f"对比正式结果：{f_home_name} WP {r['h_wr']:.1%} vs 纯净 {exp_h_wr:.1%}　|　{f_away_name} WP {r['a_wr']:.1%} vs 纯净 {exp_a_wr:.1%}")
-
-            st.divider()
-            st.markdown("**📊 相似历史比赛参考（电竞库）**")
-            st.caption("拿这场足球的纯净WP，去电竞历史库里找最接近的场次，纯粹观察规律用")
-            exp_similar = find_similar_matches(history_df, "电竞", match_val=exp_a_wr*100, match_col="客队加权胜率", dist_label="距离(WP差)", top_n=15, h_wr_val=exp_h_wr*100)
-            show_similar_table(exp_similar, sport="电竞", session_key="f_exp_similar_stats")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
