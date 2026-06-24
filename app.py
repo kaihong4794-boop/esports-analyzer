@@ -941,28 +941,36 @@ with tab6:
         hc_ref = st.text_input("历史参考比分（如 1-0）", placeholder="1-0", key="hc_ref")
 
     st.divider()
+
     col3, col4 = st.columns(2)
     with col3:
-        st.markdown("**电竞版**")
-        hc_e_dir = st.selectbox("方向", ["F", "C"], key="hc_e_dir")
-        hc_e_h = st.number_input("主WP%", 0, 100, 50, key="hc_e_h")
-        hc_e_a = st.number_input("客WP%", 0, 100, 50, key="hc_e_a")
+        st.markdown("**⚡ 电竞版**")
+        hc_e_main = st.selectbox("主队是", ["F（让球方）", "C（吃球方）"], key="hc_e_main")
+        hc_e_h = st.number_input("主队 WP%", 0, 100, 50, key="hc_e_h")
+        hc_e_a = st.number_input("客队 WP%", 0, 100, 50, key="hc_e_a")
+        e_dir = "F" if "F" in hc_e_main else "C"
+        e_label = f"{e_dir} {hc_e_h}%  vs  {'C' if e_dir=='F' else 'F'} {hc_e_a}%"
+        st.caption(f"→ {e_label}")
+
     with col4:
-        st.markdown("**足球版**")
-        hc_f_dir = st.selectbox("方向", ["F", "C"], key="hc_f_dir")
-        hc_f_h = st.number_input("主WP%", 0, 100, 50, key="hc_f_h")
-        hc_f_a = st.number_input("客WP%", 0, 100, 50, key="hc_f_a")
+        st.markdown("**⚽ 足球版**")
+        hc_f_main = st.selectbox("主队是", ["F（让球方）", "C（吃球方）"], key="hc_f_main")
+        hc_f_h = st.number_input("主队 WP%", 0, 100, 50, key="hc_f_h")
+        hc_f_a = st.number_input("客队 WP%", 0, 100, 50, key="hc_f_a")
+        f_dir = "F" if "F" in hc_f_main else "C"
+        f_label = f"{f_dir} {hc_f_h}%  vs  {'C' if f_dir=='F' else 'F'} {hc_f_a}%"
+        st.caption(f"→ {f_label}")
 
     # 自动判断两版本是否一致
-    consistent = "✅ 一致" if hc_e_dir == hc_f_dir else "❌ 不一致"
-    st.info(f"两版本方向：{consistent}")
+    consistent = "✅ 一致" if e_dir == f_dir else "❌ 不一致"
+    st.info(f"两版本方向：{consistent}　｜　电竞版 {e_label}　｜　足球版 {f_label}")
 
     if st.button("💾 保存记录", key="hc_save", type="primary"):
         record = {
             "日期": str(hc_date), "赛事": hc_sport,
-            "电竞版_方向": hc_e_dir,
+            "电竞版_方向": e_dir,
             "电竞版_主WP": f"{hc_e_h}%", "电竞版_客WP": f"{hc_e_a}%",
-            "足球版_方向": hc_f_dir,
+            "足球版_方向": f_dir,
             "足球版_主WP": f"{hc_f_h}%", "足球版_客WP": f"{hc_f_a}%",
             "两版本一致": consistent,
             "历史参考比分": hc_ref,
