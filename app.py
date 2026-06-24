@@ -267,7 +267,7 @@ def score_to_esports_result(score_str):
 # App
 # ══════════════════════════════════════════════════════════════════════════════
 st.title("运动期望值分析器 🏆")
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["❌ 电竞", "⚽ 足球", "🏀 篮球", "⚾ 棒球", "📋 记录"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["❌ 电竞", "⚽ 足球", "🏀 篮球", "⚾ 棒球", "📋 记录", "🎯 让球盘"])
 
 # ══════════════════════════════════════════════════════════════════════════════
 # TAB 1: 电竞
@@ -878,3 +878,193 @@ with tab5:
         st.dataframe(df, use_container_width=True)
         csv = df.to_csv(index=False).encode("utf-8")
         st.download_button("⬇️ 下载记录", csv, "records.csv", "text/csv")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 让球盘 Sheet2 工具函数
+# ══════════════════════════════════════════════════════════════════════════════
+HANDICAP_HEADERS = [
+    "日期", "赛事",
+    "电竞版_方向", "电竞版_主WP", "电竞版_客WP",
+    "足球版_方向", "足球版_主WP", "足球版_客WP",
+    "两版本一致", "历史参考比分", "实际结果", "赢/输"
+]
+
+def get_sheet2():
+    import json
+    credentials_info = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+    creds = Credentials.from_service_account_info(credentials_info, scopes=SCOPES)
+    client = gspread.authorize(creds)
+    spreadsheet = client.open_by_key(SHEET_ID)
+    try:
+        return spreadsheet.worksheet("让球盘")
+    except:
+        ws = spreadsheet.add_worksheet(title="让球盘", rows=1000, cols=20)
+        ws.append_row(HANDICAP_HEADERS)
+        return ws
+
+def save_to_sheet2(record):
+    try:
+        ws = get_sheet2()
+        ws.append_row([record.get(h, "") for h in HANDICAP_HEADERS])
+        load_from_sheet2.clear()
+    except Exception as e:
+        st.error(f"保存失败: {e}")
+
+@st.cache_data(ttl=60)
+def load_from_sheet2():
+    try:
+        ws = get_sheet2()
+        data = ws.get_all_records()
+        df = pd.DataFrame(data) if data else pd.DataFrame(columns=HANDICAP_HEADERS)
+        for h in HANDICAP_HEADERS:
+            if h not in df.columns:
+                df[h] = ""
+        return df
+    except Exception as e:
+        return pd.DataFrame(columns=HANDICAP_HEADERS)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 6: 让球盘分析
+# ══════════════════════════════════════════════════════════════════════════════
+with tab6:
+    st.header("🎯 让球盘分析记录")
+    st.caption("记录F/C让球盘数据，两个版本对比，自动统计胜率")
+
+    st.subheader("➕ 新增记录")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        hc_sport = st.selectbox("赛事", ["足球", "电竞"], key="hc_sport")
+        hc_date = st.date_input("日期", value=date.today(), key="hc_date")
+    with col2:
+        hc_ref = st.text_input("历史参考比分（如 1-0）", placeholder="1-0", key="hc_ref")
+
+    st.divider()
+    col3, col4 = st.columns(2)
+    with col3:
+        st.markdown("**电竞版**")
+        hc_e_dir = st.selectbox("方向", ["F", "C"], key="hc_e_dir")
+        hc_e_h = st.number_input("主WP%", 0, 100, 50, key="hc_e_h")
+        hc_e_a = st.number_input("客WP%", 0, 100, 50, key="hc_e_a")
+    with col4:
+        st.markdown("**足球版**")
+        hc_f_dir = st.selectbox("方向", ["F", "C"], key="hc_f_dir")
+        hc_f_h = st.number_input("主WP%", 0, 100, 50, key="hc_f_h")
+        hc_f_a = st.number_input("客WP%", 0, 100, 50, key="hc_f_a")
+
+    # 自动判断两版本是否一致
+    consistent = "✅ 一致" if hc_e_dir == hc_f_dir else "❌ 不一致"
+    st.info(f"两版本方向：{consistent}")
+
+    if st.button("💾 保存记录", key="hc_save", type="primary"):
+        record = {
+            "日期": str(hc_date), "赛事": hc_sport,
+            "电竞版_方向": hc_e_dir,
+            "电竞版_主WP": f"{hc_e_h}%", "电竞版_客WP": f"{hc_e_a}%",
+            "足球版_方向": hc_f_dir,
+            "足球版_主WP": f"{hc_f_h}%", "足球版_客WP": f"{hc_f_a}%",
+            "两版本一致": consistent,
+            "历史参考比分": hc_ref,
+            "实际结果": "", "赢/输": ""
+        }
+        save_to_sheet2(record)
+        st.success("✅ 已保存！比赛结束后回来填实际结果。")
+
+    # ── 填写实际结果 ──────────────────────────────────────────────────────────
+    st.divider()
+    st.subheader("✏️ 填写实际结果")
+
+    hc_df = load_from_sheet2()
+    if not hc_df.empty:
+        missing = hc_df[hc_df["实际结果"].astype(str).str.strip() == ""]
+        if missing.empty:
+            st.success("所有记录都已填写结果！")
+        else:
+            st.caption(f"还有 {len(missing)} 场未填写")
+            for idx, row in missing.iloc[::-1].iterrows():
+                label = f"{row['日期']} | {row['赛事']} | 电竞{row['电竞版_方向']} {row['电竞版_主WP']}vs{row['电竞版_客WP']} | 足球{row['足球版_方向']} {row['足球版_主WP']}vs{row['足球版_客WP']}"
+                with st.expander(label):
+                    res_input = st.text_input("实际结果（如 2-1）", key=f"hc_res_{idx}")
+                    if st.button("保存", key=f"hc_save_res_{idx}"):
+                        if re.match(r"^\d+-\d+$", res_input.strip()):
+                            # 判断赢/输
+                            s1, s2 = map(int, res_input.split("-"))
+                            direction = row["电竞版_方向"]  # 以电竞版为准
+                            if s1 == s2:
+                                win_loss = "平局"
+                            elif (s1 > s2 and direction == "F") or (s1 < s2 and direction == "C"):
+                                win_loss = "✓ 赢"
+                            else:
+                                win_loss = "✗ 输"
+                            try:
+                                ws = get_sheet2()
+                                all_vals = ws.get_all_values()
+                                sheet_row = idx + 2
+                                res_col = HANDICAP_HEADERS.index("实际结果") + 1
+                                wl_col = HANDICAP_HEADERS.index("赢/输") + 1
+                                ws.update_cell(sheet_row, res_col, res_input.strip())
+                                ws.update_cell(sheet_row, wl_col, win_loss)
+                                load_from_sheet2.clear()
+                                st.success(f"✅ 已保存！{win_loss}")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"保存失败: {e}")
+                        else:
+                            st.warning("格式错误，请输入如 2-1")
+
+    # ── 胜率统计 ──────────────────────────────────────────────────────────────
+    st.divider()
+    st.subheader("📊 胜率统计")
+
+    hc_df = load_from_sheet2()
+    completed = hc_df[hc_df["赢/输"].astype(str).str.contains("赢|输")]
+
+    if completed.empty:
+        st.info("还没有完成的记录，继续加油记录！")
+    else:
+        wins = completed[completed["赢/输"].str.contains("赢")]
+        losses = completed[completed["赢/输"].str.contains("输")]
+        draws = hc_df[hc_df["赢/输"].astype(str).str.contains("平")]
+        n = len(completed)
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("总场次", len(hc_df))
+        c2.metric("✓ 赢", len(wins))
+        c3.metric("✗ 输", len(losses))
+        c4.metric("胜率", f"{len(wins)/n:.1%}" if n > 0 else "—")
+
+        # 按高WP分组
+        st.divider()
+        st.caption("按电竞版高WP分组胜率")
+
+        for lo, hi in [(0,47),(48,53),(54,67),(68,100)]:
+            sub = []
+            for _, row in completed.iterrows():
+                try:
+                    h = int(str(row["电竞版_主WP"]).replace("%",""))
+                    a = int(str(row["电竞版_客WP"]).replace("%",""))
+                    high = max(h, a)
+                    if lo <= high <= hi:
+                        sub.append(row)
+                except: pass
+            if not sub: continue
+            w = sum(1 for r in sub if "赢" in str(r["赢/输"]))
+            st.write(f"高WP {lo}-{hi}%：{len(sub)}场  {w}胜{len(sub)-w}负  **{w/len(sub):.0%}**")
+
+        st.divider()
+        # 两版本一致 vs 不一致
+        consistent_rows = completed[completed["两版本一致"].str.contains("✅")]
+        inconsistent_rows = completed[completed["两版本一致"].str.contains("❌")]
+        if len(consistent_rows) > 0:
+            cw = len(consistent_rows[consistent_rows["赢/输"].str.contains("赢")])
+            st.write(f"✅ 两版本一致：{len(consistent_rows)}场  {cw}胜  **{cw/len(consistent_rows):.0%}**")
+        if len(inconsistent_rows) > 0:
+            iw = len(inconsistent_rows[inconsistent_rows["赢/输"].str.contains("赢")])
+            st.write(f"❌ 两版本不一致：{len(inconsistent_rows)}场  {iw}胜  **{iw/len(inconsistent_rows):.0%}**")
+
+        st.divider()
+        st.subheader("📄 完整记录")
+        st.dataframe(hc_df, use_container_width=True, hide_index=True)
+        csv2 = hc_df.to_csv(index=False).encode("utf-8")
+        st.download_button("⬇️ 下载让球盘记录", csv2, "handicap_records.csv", "text/csv")
