@@ -887,7 +887,7 @@ HANDICAP_HEADERS = [
     "日期", "赛事",
     "电竞版_方向", "电竞版_主WP", "电竞版_客WP", "电竞版_历史参考",
     "足球版_方向", "足球版_主WP", "足球版_客WP", "足球版_历史参考",
-    "两版本一致", "实际结果", "赢/输"
+    "实际结果", "赢/输"
 ]
 
 def get_sheet2():
@@ -961,9 +961,8 @@ with tab6:
         f_label = f"{f_dir} {hc_f_h}%  vs  {'C' if f_dir=='F' else 'F'} {hc_f_a}%"
         st.caption(f"→ {f_label}")
 
-    # 自动判断两版本是否一致
-    consistent = "✅ 一致" if e_dir == f_dir else "❌ 不一致"
-    st.info(f"两版本方向：{consistent}　｜　电竞版 {e_label}　｜　足球版 {f_label}")
+    # 显示两版本摘要
+    st.info(f"电竞版 {e_label}　｜　足球版 {f_label}")
 
     if st.button("💾 保存记录", key="hc_save", type="primary"):
         record = {
@@ -974,7 +973,6 @@ with tab6:
             "足球版_方向": f_dir,
             "足球版_主WP": f"{hc_f_h}%", "足球版_客WP": f"{hc_f_a}%",
             "足球版_历史参考": hc_f_ref,
-            "两版本一致": consistent,
             "实际结果": "", "赢/输": ""
         }
         save_to_sheet2(record)
