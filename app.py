@@ -16,7 +16,6 @@ HEADERS = [
     "比赛结果", "甜蜜点", "建议下注", "押注方向", "投注结果"
 ]
 
-# ─── Google Sheets ────────────────────────────────────────────────────────────
 def get_sheet():
     import json
     credentials_info = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
@@ -49,72 +48,48 @@ def load_from_sheet():
         st.session_state["_load_sheet_error"] = str(e)
         return pd.DataFrame(columns=HEADERS)
 
-# ─── 相似比赛匹配 ──────────────────────────────────────────────────────────────
 def _parse_pct(val):
-    if val is None or val == "":
-        return None
-    if isinstance(val, (int, float)):
-        return float(val)
+    if val is None or val == "": return None
+    if isinstance(val, (int, float)): return float(val)
     s = str(val).strip().replace("%", "").replace("+", "")
-    try:
-        return float(s)
-    except:
-        return None
+    try: return float(s)
+    except: return None
 
 def _parse_ev(val):
-    if val is None or val == "":
-        return None
-    if isinstance(val, (int, float)):
-        return float(val)
-    try:
-        return float(str(val).strip())
-    except:
-        return None
+    if val is None or val == "": return None
+    if isinstance(val, (int, float)): return float(val)
+    try: return float(str(val).strip())
+    except: return None
 
 def find_similar_matches(df, sport, match_val, match_col, dist_label, top_n=15, sec_val=None, sec_col=None, h_wr_val=None, a_wr_val=None, d_wr_val=None):
-    if df.empty:
-        return []
+    if df.empty: return []
     candidates = df[df["运动"] == sport].copy()
-    if candidates.empty:
-        return []
+    if candidates.empty: return []
     rows = []
     for _, row in candidates.iterrows():
         result = str(row.get("比赛结果", "")).strip()
-        if not result or result in ("nan", "None", "—", "CANCEL"):
-            continue
+        if not result or result in ("nan", "None", "—", "CANCEL"): continue
         c_val = _parse_pct(row.get(match_col))
-        if c_val is None:
-            continue
-        c_h_wp  = _parse_pct(row.get("主队加权胜率"))
-        c_a_wp  = _parse_pct(row.get("客队加权胜率"))
-        c_d_wp  = _parse_pct(row.get("平局加权胜率"))
-        c_h_ev  = _parse_ev(row.get("主队期望值"))
-        c_a_ev  = _parse_ev(row.get("客队期望值"))
+        if c_val is None: continue
+        c_h_wp = _parse_pct(row.get("主队加权胜率"))
+        c_a_wp = _parse_pct(row.get("客队加权胜率"))
+        c_d_wp = _parse_pct(row.get("平局加权胜率"))
+        c_h_ev = _parse_ev(row.get("主队期望值"))
+        c_a_ev = _parse_ev(row.get("客队期望值"))
         sec_dist = 0
         if sec_val is not None and sec_col is not None:
             c_sec = _parse_ev(row.get(sec_col)) if "EV" in sec_col or "期望值" in sec_col else _parse_pct(row.get(sec_col))
             sec_dist = abs(c_sec - sec_val) if c_sec is not None else 9999
-        h_wr_dist = 0
-        if h_wr_val is not None:
-            h_wr_dist = abs(c_h_wp - h_wr_val) if c_h_wp is not None else 9999
-        a_wr_dist = 0
-        if a_wr_val is not None:
-            a_wr_dist = abs(c_a_wp - a_wr_val) if c_a_wp is not None else 9999
-        d_wr_dist = 0
-        if d_wr_val is not None:
-            d_wr_dist = abs(c_d_wp - d_wr_val) if c_d_wp is not None else 9999
+        h_wr_dist = abs(c_h_wp - h_wr_val) if h_wr_val is not None and c_h_wp is not None else 0
+        a_wr_dist = abs(c_a_wp - a_wr_val) if a_wr_val is not None and c_a_wp is not None else 0
+        d_wr_dist = abs(c_d_wp - d_wr_val) if d_wr_val is not None and c_d_wp is not None else 0
         combined_wp_dist = round(abs(c_val - match_val) + h_wr_dist + a_wr_dist, 1)
         rows.append({
-            dist_label: combined_wp_dist,
-            "_sec_dist": sec_dist,
-            "_d_dist": d_wr_dist,
-            "日期": row.get("日期", ""),
-            "主队": row.get("主队", ""),
-            "客队": row.get("客队", ""),
+            dist_label: combined_wp_dist, "_sec_dist": sec_dist, "_d_dist": d_wr_dist,
+            "日期": row.get("日期", ""), "主队": row.get("主队", ""), "客队": row.get("客队", ""),
             "主队WP": c_h_wp, "平局WP": c_d_wp, "客队WP": c_a_wp,
             "主队EV": c_h_ev, "客队EV": c_a_ev,
-            match_col: f"{c_val:.1f}%",
-            "比赛结果": result,
+            match_col: f"{c_val:.1f}%", "比赛结果": result,
         })
     rows.sort(key=lambda x: (float(x["_d_dist"]), float(x[dist_label]), float(x["_sec_dist"])))
     return rows[:top_n]
@@ -132,9 +107,7 @@ def show_similar_table(similar, sport="足球", session_key="similar_stats"):
     for m in similar:
         score = str(m["比赛结果"]).strip()
         mm = re.match(r"^(\d+)\s*-\s*(\d+)$", score)
-        if not mm:
-            unknown += 1
-            continue
+        if not mm: unknown += 1; continue
         hs, as_ = int(mm.group(1)), int(mm.group(2))
         if hs > as_: h_win += 1
         elif hs < as_: a_win += 1
@@ -172,11 +145,9 @@ def show_similar_table(similar, sport="足球", session_key="similar_stats"):
             c1.metric("🏠 主队胜", f"{h_win}/{n}  ({h_win/n:.0%})")
             c2.metric("✈️ 客队胜", f"{a_win}/{n}  ({a_win/n:.0%})")
             stats_str = f"主胜{h_win/n:.0%} 客胜{a_win/n:.0%}（{n}场）"
-        if unknown > 0:
-            st.caption(f"另有 {unknown} 场结果格式无法识别（未计入）")
+        if unknown > 0: st.caption(f"另有 {unknown} 场结果格式无法识别（未计入）")
     st.session_state[session_key] = stats_str
 
-# ─── 比赛结果权重 ──────────────────────────────────────────────────────────────
 football_results = {
     "大胜": {"weight": 1.0,  "is_win": 1, "is_draw": 0},
     "小胜": {"weight": 0.75, "is_win": 1, "is_draw": 0},
@@ -192,12 +163,6 @@ score_weights_esports = {
     "2-3 输": 0.4,  "1-3 输": 0.3,  "0-3 输": 0.2,
 }
 
-result_emoji_football = {
-    "大胜": "🏆 大胜 (≥+3)", "小胜": "✅ 小胜 (+1/+2)",
-    "平局": "➖ 平局",        "小负": "❌ 小负 (-1/-2)",
-    "大负": "💀 大负 (≤-3)",
-}
-
 result_emoji_esports = {
     "1-0 赢": "🏆 BO1 赢",   "0-1 输": "💀 BO1 输",  "1-1 平": "➖ BO2 平局",
     "2-0 赢": "🏆 2-0 大胜", "2-1 赢": "✅ 2-1 小胜", "1-2 输": "❌ 1-2 小负",
@@ -206,37 +171,29 @@ result_emoji_esports = {
     "0-3 输": "💀 0-3 大负",
 }
 
-# ─── 比分转换 ─────────────────────────────────────────────────────────────────
 def score_to_football_result(score_str):
     score_str = score_str.strip()
     if not re.match(r'^\d+-\d+$', score_str): return None
-    try:
-        my_score, opp_score = map(int, score_str.split('-'))
+    try: my_score, opp_score = map(int, score_str.split('-'))
     except: return None
     diff = abs(my_score - opp_score)
-    if my_score > opp_score:   return "大胜" if diff >= 3 else "小胜"
+    if my_score > opp_score: return "大胜" if diff >= 3 else "小胜"
     elif my_score == opp_score: return "平局"
-    else:                       return "大负" if diff >= 3 else "小负"
+    else: return "大负" if diff >= 3 else "小负"
 
 def score_to_esports_result(score_str):
     score_str = score_str.strip()
     if not re.match(r'^\d+-\d+$', score_str): return None
     try: a, b = map(int, score_str.split('-'))
     except: return None
-    if a == b:   key = f"{a}-{b} 平"
-    elif a > b:  key = f"{a}-{b} 赢"
-    else:        key = f"{a}-{b} 输"
+    if a == b: key = f"{a}-{b} 平"
+    elif a > b: key = f"{a}-{b} 赢"
+    else: key = f"{a}-{b} 输"
     return key if key in score_weights_esports else None
 
-# ══════════════════════════════════════════════════════════════════════════════
-# App
-# ══════════════════════════════════════════════════════════════════════════════
 st.title("运动期望值分析器 🏆")
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["❌ 电竞", "⚽ 足球", "🏀 篮球", "⚾ 棒球", "📋 记录", "🎯 让球盘"])
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 1: 电竞
-# ══════════════════════════════════════════════════════════════════════════════
 with tab1:
     st.header("电竞期望值分析器")
     col1, col2 = st.columns(2)
@@ -246,260 +203,153 @@ with tab1:
     with col2:
         e_away_name = st.text_input("客队名字", "客队", key="e_away_name")
         e_away_odds = st.number_input("客队赔率", min_value=1.01, value=2.0, step=0.01, key="e_away_odds")
-
     st.divider()
     num_matches_e = st.slider("最近几场比赛？", 1, 5, 5, key="e_slider")
     st.caption("支持 BO1 (1-0/0-1) · BO3 (2-0/2-1/1-2/0-2) · BO5 (3-0/3-1/3-2/2-3/1-3/0-3)")
-
     col3, col4 = st.columns(2)
     e_home_vars, e_away_vars = [], []
-
     with col3:
         st.markdown(f"**{e_home_name}**")
         for i in range(num_matches_e):
             label = "最新" if i == 0 else f"第{i+1}场"
             score_input = st.text_input(label, value="", placeholder="2-1 / 1-0 / 3-2", key=f"eh_{i}")
             result = score_to_esports_result(score_input)
-            if result:
-                st.caption(f"→ {result_emoji_esports.get(result, result)}")
-                e_home_vars.append(result)
+            if result: st.caption(f"→ {result_emoji_esports.get(result, result)}"); e_home_vars.append(result)
             else:
                 if score_input: st.caption("⚠️ 请填有效比分")
                 e_home_vars.append("2-1 赢")
-
     with col4:
         st.markdown(f"**{e_away_name}**")
         for i in range(num_matches_e):
             label = "最新" if i == 0 else f"第{i+1}场"
             score_input = st.text_input(label, value="", placeholder="2-1 / 1-0 / 3-2", key=f"ea_{i}")
             result = score_to_esports_result(score_input)
-            if result:
-                st.caption(f"→ {result_emoji_esports.get(result, result)}")
-                e_away_vars.append(result)
+            if result: st.caption(f"→ {result_emoji_esports.get(result, result)}"); e_away_vars.append(result)
             else:
                 if score_input: st.caption("⚠️ 请填有效比分")
                 e_away_vars.append("2-1 赢")
-
     if st.button("⚡ 计算", key="e_calc", type="primary"):
         def e_winrate(vars, weights):
             total_w = win_w = 0
             for i, v in enumerate(vars):
-                base    = 1.0 - (i * 0.1)
-                total_w += base
-                win_w   += (1 if "赢" in v else (0.5 if "平" in v else 0)) * weights[v] * base
+                base = 1.0 - (i * 0.1); total_w += base
+                win_w += (1 if "赢" in v else (0.5 if "平" in v else 0)) * weights[v] * base
             return win_w / total_w if total_w > 0 else 0
         h_wr = e_winrate(e_home_vars, score_weights_esports)
         a_wr = e_winrate(e_away_vars, score_weights_esports)
         h_ev = (h_wr * (e_home_odds - 1) * 100) - ((1 - h_wr) * 100)
         a_ev = (a_wr * (e_away_odds - 1) * 100) - ((1 - a_wr) * 100)
-        st.session_state["e_result"] = {
-            "h_wr": h_wr, "a_wr": a_wr, "h_ev": h_ev, "a_ev": a_ev,
-            "h_odds": e_home_odds, "a_odds": e_away_odds,
-            "h_name": e_home_name, "a_name": e_away_name,
-        }
-
+        st.session_state["e_result"] = {"h_wr": h_wr, "a_wr": a_wr, "h_ev": h_ev, "a_ev": a_ev, "h_odds": e_home_odds, "a_odds": e_away_odds, "h_name": e_home_name, "a_name": e_away_name}
     if "e_result" in st.session_state:
         r = st.session_state["e_result"]
         st.divider()
-        h_impl = (1/r["h_odds"])*100
-        a_impl = (1/r["a_odds"])*100
-        h_adv = r["h_wr"]*100 - h_impl
-        a_adv = r["a_wr"]*100 - a_impl
-
+        h_impl = (1/r["h_odds"])*100; a_impl = (1/r["a_odds"])*100
+        h_adv = r["h_wr"]*100 - h_impl; a_adv = r["a_wr"]*100 - a_impl
         col5, col6 = st.columns(2)
         with col5:
-            st.subheader(r["h_name"])
-            st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}")
-            st.metric("期望值 (EV)",   f"RM{r['h_ev']:.2f}")
-            st.metric("隐含概率",       f"{h_impl:.1f}%")
+            st.subheader(r["h_name"]); st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}"); st.metric("期望值 (EV)", f"RM{r['h_ev']:.2f}"); st.metric("隐含概率", f"{h_impl:.1f}%")
         with col6:
-            st.subheader(r["a_name"])
-            st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}")
-            st.metric("期望值 (EV)",   f"RM{r['a_ev']:.2f}")
-            st.metric("隐含概率",       f"{a_impl:.1f}%")
-
+            st.subheader(r["a_name"]); st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}"); st.metric("期望值 (EV)", f"RM{r['a_ev']:.2f}"); st.metric("隐含概率", f"{a_impl:.1f}%")
         st.divider()
-        if r["a_ev"] >= 100:
-            st.success(f"🔄 EV逆向信号（强）：客队EV = {r['a_ev']:.1f} ≥ 100 → 参考押 **{r['h_name']}** 独赢（历史约70%）")
-        elif r["a_ev"] >= 50:
-            st.info(f"🔄 EV逆向信号：客队EV = {r['a_ev']:.1f} ≥ 50 → 参考押 **{r['h_name']}** 独赢（历史约64%）")
-        elif r["h_ev"] >= 100:
-            st.success(f"🔄 EV逆向信号（强）：主队EV = {r['h_ev']:.1f} ≥ 100 → 参考押 **{r['a_name']}** 独赢（历史约70%）")
-        elif r["h_ev"] >= 50:
-            st.info(f"🔄 EV逆向信号：主队EV = {r['h_ev']:.1f} ≥ 50 → 参考押 **{r['a_name']}** 独赢（历史约64%）")
-        else:
-            st.warning("⚪ 无EV逆向信号（主客队EV均低于50）")
-
-        st.divider()
-        st.subheader("📊 相似历史比赛参考")
-        st.caption("根据相似指标找出历史上最接近的15场比赛，仅供参考")
+        if r["a_ev"] >= 100: st.success(f"🔄 EV逆向信号（强）：客队EV = {r['a_ev']:.1f} ≥ 100 → 参考押 **{r['h_name']}** 独赢（历史约70%）")
+        elif r["a_ev"] >= 50: st.info(f"🔄 EV逆向信号：客队EV = {r['a_ev']:.1f} ≥ 50 → 参考押 **{r['h_name']}** 独赢（历史约64%）")
+        elif r["h_ev"] >= 100: st.success(f"🔄 EV逆向信号（强）：主队EV = {r['h_ev']:.1f} ≥ 100 → 参考押 **{r['a_name']}** 独赢（历史约70%）")
+        elif r["h_ev"] >= 50: st.info(f"🔄 EV逆向信号：主队EV = {r['h_ev']:.1f} ≥ 50 → 参考押 **{r['a_name']}** 独赢（历史约64%）")
+        else: st.warning("⚪ 无EV逆向信号（主客队EV均低于50）")
+        st.divider(); st.subheader("📊 相似历史比赛参考"); st.caption("根据相似指标找出历史上最接近的15场比赛，仅供参考")
         history_df = load_from_sheet()
         similar = find_similar_matches(history_df, "电竞", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(WP差)", top_n=15, h_wr_val=r["h_wr"]*100)
         show_similar_table(similar, sport="电竞", session_key="e_similar_stats")
-
         st.divider()
         if st.button("💾 保存记录", key="e_save"):
-            record = {
-                "日期": str(date.today()), "运动": "电竞",
-                "主队": r["h_name"], "客队": r["a_name"],
-                "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": "N/A",
-                "客队加权胜率": f"{r['a_wr']:.1%}",
-                "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A",
-                "客队期望值": f"{r['a_ev']:.2f}",
-                "主队隐含概率": f"{h_impl:.1f}%", "平局隐含概率": "N/A",
-                "客队隐含概率": f"{a_impl:.1f}%",
-                "主队优势差距": f"{h_adv:+.1f}%", "平局优势差距": "N/A",
-                "客队优势差距": f"{a_adv:+.1f}%",
-                "比赛结果": "", "甜蜜点": st.session_state.get("e_similar_stats", ""),
-                "建议下注": "", "押注方向": "", "投注结果": "",
-            }
-            save_to_sheet(record)
-            st.success("✅ 记录已保存！")
+            record = {"日期": str(date.today()), "运动": "电竞", "主队": r["h_name"], "客队": r["a_name"], "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": "N/A", "客队加权胜率": f"{r['a_wr']:.1%}", "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A", "客队期望值": f"{r['a_ev']:.2f}", "主队隐含概率": f"{h_impl:.1f}%", "平局隐含概率": "N/A", "客队隐含概率": f"{a_impl:.1f}%", "主队优势差距": f"{h_adv:+.1f}%", "平局优势差距": "N/A", "客队优势差距": f"{a_adv:+.1f}%", "比赛结果": "", "甜蜜点": st.session_state.get("e_similar_stats", ""), "建议下注": "", "押注方向": "", "投注结果": ""}
+            save_to_sheet(record); st.success("✅ 记录已保存！")
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 2: 足球
-# ══════════════════════════════════════════════════════════════════════════════
 with tab2:
     st.header("足球期望值分析器")
     col1, col2 = st.columns(2)
     with col1: f_home_name = st.text_input("主队名字", "主队", key="f_home_name")
     with col2: f_away_name = st.text_input("客队名字", "客队", key="f_away_name")
-
     col3, col4, col5 = st.columns(3)
     with col3: f_home_odds = st.number_input("主队赔率", min_value=1.01, value=2.0, step=0.01, key="f_home_odds")
     with col4: f_draw_odds = st.number_input("平局赔率", min_value=1.01, value=3.0, step=0.01, key="f_draw_odds")
     with col5: f_away_odds = st.number_input("客队赔率", min_value=1.01, value=3.5, step=0.01, key="f_away_odds")
-
     st.divider()
     num_matches_f = st.slider("最近几场比赛？", 1, 5, 5, key="f_slider")
     st.caption("填实际比分（自己得分-对手得分）| 球差≥3=3-0/0-3  球差2=2-0/0-2  球差1=2-1/1-2  平局=1-1")
-
     def score_to_football_esports(score_str):
         score_str = score_str.strip()
         if not re.match(r'^\d+-\d+$', score_str): return None
         try: my, opp = map(int, score_str.split('-'))
         except: return None
         diff = my - opp
-        if diff >= 3:   return "3-0 赢"
+        if diff >= 3: return "3-0 赢"
         elif diff == 2: return "2-0 赢"
         elif diff == 1: return "2-1 赢"
         elif diff == 0: return "1-1 平"
         elif diff == -1: return "1-2 输"
         elif diff == -2: return "0-2 输"
-        else:            return "0-3 输"
-
+        else: return "0-3 输"
     col_h2, col_a2 = st.columns(2)
     f_home_vars, f_away_vars = [], []
-
     with col_h2:
         st.markdown(f"**{f_home_name}**")
         for i in range(num_matches_f):
             label = "最新" if i == 0 else f"第{i+1}场"
             score_input = st.text_input(label, value="", placeholder="自己-对手 如 2-1", key=f"fh_{i}")
             result = score_to_football_esports(score_input)
-            if result:
-                st.caption(f"→ {result_emoji_esports.get(result, result)}")
-                f_home_vars.append(result)
+            if result: st.caption(f"→ {result_emoji_esports.get(result, result)}"); f_home_vars.append(result)
             else:
                 if score_input: st.caption("⚠️ 格式错误")
                 f_home_vars.append("2-1 赢")
-
     with col_a2:
         st.markdown(f"**{f_away_name}**")
         for i in range(num_matches_f):
             label = "最新" if i == 0 else f"第{i+1}场"
             score_input = st.text_input(label, value="", placeholder="自己-对手 如 2-1", key=f"fa_{i}")
             result = score_to_football_esports(score_input)
-            if result:
-                st.caption(f"→ {result_emoji_esports.get(result, result)}")
-                f_away_vars.append(result)
+            if result: st.caption(f"→ {result_emoji_esports.get(result, result)}"); f_away_vars.append(result)
             else:
                 if score_input: st.caption("⚠️ 格式错误")
                 f_away_vars.append("2-1 赢")
-
     if st.button("⚡ 计算", key="f_calc", type="primary"):
         def f_winrate(vars, weights):
             total_w = win_w = 0
             for i, v in enumerate(vars):
-                base    = 1.0 - (i * 0.1)
-                total_w += base
-                win_w   += (1 if "赢" in v else (0.5 if "平" in v else 0)) * weights[v] * base
+                base = 1.0 - (i * 0.1); total_w += base
+                win_w += (1 if "赢" in v else (0.5 if "平" in v else 0)) * weights[v] * base
             return win_w / total_w if total_w > 0 else 0
-
         h_wr = f_winrate(f_home_vars, score_weights_esports)
         a_wr = f_winrate(f_away_vars, score_weights_esports)
         h_ev = (h_wr * (f_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr * (f_away_odds-1)*100) - ((1-a_wr)*100)
-        st.session_state["f_result"] = {
-            "h_wr": h_wr, "a_wr": a_wr,
-            "h_ev": h_ev, "a_ev": a_ev,
-            "h_odds": f_home_odds, "a_odds": f_away_odds, "d_odds": f_draw_odds,
-            "h_name": f_home_name, "a_name": f_away_name,
-        }
-
+        st.session_state["f_result"] = {"h_wr": h_wr, "a_wr": a_wr, "h_ev": h_ev, "a_ev": a_ev, "h_odds": f_home_odds, "a_odds": f_away_odds, "d_odds": f_draw_odds, "h_name": f_home_name, "a_name": f_away_name}
     if "f_result" in st.session_state:
         r = st.session_state["f_result"]
         st.divider()
-        h_impl = (1/r["h_odds"])*100
-        a_impl = (1/r["a_odds"])*100
-        h_adv = r["h_wr"]*100 - h_impl
-        a_adv = r["a_wr"]*100 - a_impl
-
+        h_impl = (1/r["h_odds"])*100; a_impl = (1/r["a_odds"])*100
+        h_adv = r["h_wr"]*100 - h_impl; a_adv = r["a_wr"]*100 - a_impl
         col9, col11 = st.columns(2)
         with col9:
-            st.subheader(f_home_name)
-            st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}")
-            st.metric("期望值 (EV)",   f"RM{r['h_ev']:.2f}")
-            st.metric("隐含概率",       f"{h_impl:.1f}%")
+            st.subheader(f_home_name); st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}"); st.metric("期望值 (EV)", f"RM{r['h_ev']:.2f}"); st.metric("隐含概率", f"{h_impl:.1f}%")
         with col11:
-            st.subheader(f_away_name)
-            st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}")
-            st.metric("期望值 (EV)",   f"RM{r['a_ev']:.2f}")
-            st.metric("隐含概率",       f"{a_impl:.1f}%")
-
+            st.subheader(f_away_name); st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}"); st.metric("期望值 (EV)", f"RM{r['a_ev']:.2f}"); st.metric("隐含概率", f"{a_impl:.1f}%")
         st.caption(f"平局赔率参考：{r['d_odds']}（隐含概率 {1/r['d_odds']*100:.1f}%）")
-
         st.divider()
-        if r["a_ev"] >= 100:
-            st.success(f"🔄 EV逆向信号（强）：客队EV = {r['a_ev']:.1f} ≥ 100 → 参考押 **{f_home_name}** 独赢（历史约70%）")
-        elif r["a_ev"] >= 50:
-            st.info(f"🔄 EV逆向信号：客队EV = {r['a_ev']:.1f} ≥ 50 → 参考押 **{f_home_name}** 独赢（历史约64%）")
-        elif r["h_ev"] >= 100:
-            st.success(f"🔄 EV逆向信号（强）：主队EV = {r['h_ev']:.1f} ≥ 100 → 参考押 **{f_away_name}** 独赢（历史约70%）")
-        elif r["h_ev"] >= 50:
-            st.info(f"🔄 EV逆向信号：主队EV = {r['h_ev']:.1f} ≥ 50 → 参考押 **{f_away_name}** 独赢（历史约64%）")
-        else:
-            st.warning("⚪ 无EV逆向信号（主客队EV均低于50）")
-
-        st.divider()
-        st.subheader("📊 相似历史比赛参考")
-        st.caption("根据相似指标找出历史上最接近的15场比赛，仅供参考")
+        if r["a_ev"] >= 100: st.success(f"🔄 EV逆向信号（强）：客队EV = {r['a_ev']:.1f} ≥ 100 → 参考押 **{f_home_name}** 独赢（历史约70%）")
+        elif r["a_ev"] >= 50: st.info(f"🔄 EV逆向信号：客队EV = {r['a_ev']:.1f} ≥ 50 → 参考押 **{f_home_name}** 独赢（历史约64%）")
+        elif r["h_ev"] >= 100: st.success(f"🔄 EV逆向信号（强）：主队EV = {r['h_ev']:.1f} ≥ 100 → 参考押 **{f_away_name}** 独赢（历史约70%）")
+        elif r["h_ev"] >= 50: st.info(f"🔄 EV逆向信号：主队EV = {r['h_ev']:.1f} ≥ 50 → 参考押 **{f_away_name}** 独赢（历史约64%）")
+        else: st.warning("⚪ 无EV逆向信号（主客队EV均低于50）")
+        st.divider(); st.subheader("📊 相似历史比赛参考"); st.caption("根据相似指标找出历史上最接近的15场比赛，仅供参考")
         history_df = load_from_sheet()
         similar = find_similar_matches(history_df, "足球", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(WP差)", top_n=15, h_wr_val=r["h_wr"]*100)
         show_similar_table(similar, sport="足球", session_key="f_similar_stats")
-
         st.divider()
         if st.button("💾 保存记录", key="f_save"):
-            record = {
-                "日期": str(date.today()), "运动": "足球",
-                "主队": r["h_name"], "客队": r["a_name"],
-                "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": "N/A",
-                "客队加权胜率": f"{r['a_wr']:.1%}",
-                "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A",
-                "客队期望值": f"{r['a_ev']:.2f}",
-                "主队隐含概率": f"{h_impl:.1f}%", "平局隐含概率": f"{1/r['d_odds']*100:.1f}%",
-                "客队隐含概率": f"{a_impl:.1f}%",
-                "主队优势差距": f"{h_adv:+.1f}%", "平局优势差距": "N/A",
-                "客队优势差距": f"{a_adv:+.1f}%",
-                "比赛结果": "", "甜蜜点": st.session_state.get("f_similar_stats", ""),
-                "建议下注": "", "押注方向": "", "投注结果": "",
-            }
-            save_to_sheet(record)
-            st.success("✅ 记录已保存！")
+            record = {"日期": str(date.today()), "运动": "足球", "主队": r["h_name"], "客队": r["a_name"], "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": "N/A", "客队加权胜率": f"{r['a_wr']:.1%}", "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A", "客队期望值": f"{r['a_ev']:.2f}", "主队隐含概率": f"{h_impl:.1f}%", "平局隐含概率": f"{1/r['d_odds']*100:.1f}%", "客队隐含概率": f"{a_impl:.1f}%", "主队优势差距": f"{h_adv:+.1f}%", "平局优势差距": "N/A", "客队优势差距": f"{a_adv:+.1f}%", "比赛结果": "", "甜蜜点": st.session_state.get("f_similar_stats", ""), "建议下注": "", "押注方向": "", "投注结果": ""}
+            save_to_sheet(record); st.success("✅ 记录已保存！")
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 3: 篮球
-# ══════════════════════════════════════════════════════════════════════════════
 with tab3:
     st.header("篮球期望值分析器")
     col1, col2 = st.columns(2)
@@ -509,99 +359,48 @@ with tab3:
     with col2:
         b_away_name = st.text_input("客队名字", "客队", key="b_away_name")
         b_away_odds = st.number_input("客队赔率", min_value=1.01, value=2.0, step=0.01, key="b_away_odds")
-
     st.divider()
     num_matches_b = st.slider("最近几场比赛？", 1, 5, 5, key="b_slider")
-    score_weights_b = {
-        "大胜 (+15以上)": 1.0, "小胜 (+1到+14)": 0.7,
-        "小负 (-1到-14)": 0.4, "大负 (-15以上)": 0.2,
-    }
+    score_weights_b = {"大胜 (+15以上)": 1.0, "小胜 (+1到+14)": 0.7, "小负 (-1到-14)": 0.4, "大负 (-15以上)": 0.2}
     col3, col4 = st.columns(2)
     b_home_vars, b_away_vars = [], []
     with col3:
         st.subheader(f"{b_home_name} 最近{num_matches_b}场")
         for i in range(num_matches_b):
-            v = st.selectbox(f"第{i+1}场", list(score_weights_b.keys()), key=f"bh{i}")
-            b_home_vars.append(v)
+            v = st.selectbox(f"第{i+1}场", list(score_weights_b.keys()), key=f"bh{i}"); b_home_vars.append(v)
     with col4:
         st.subheader(f"{b_away_name} 最近{num_matches_b}场")
         for i in range(num_matches_b):
-            v = st.selectbox(f"第{i+1}场", list(score_weights_b.keys()), key=f"ba{i}")
-            b_away_vars.append(v)
-
+            v = st.selectbox(f"第{i+1}场", list(score_weights_b.keys()), key=f"ba{i}"); b_away_vars.append(v)
     def b_winrate(vars, weights):
         total_w = win_w = 0
         for i, v in enumerate(vars):
             base = 1.0 - (i * 0.1); total_w += base
             win_w += (1 if "胜" in v else 0) * weights[v] * base
         return win_w / total_w if total_w > 0 else 0
-
     if st.button("计算", key="b_calc", type="primary"):
-        h_wr = b_winrate(b_home_vars, score_weights_b)
-        a_wr = b_winrate(b_away_vars, score_weights_b)
-        h_ev = (h_wr*(b_home_odds-1)*100) - ((1-h_wr)*100)
-        a_ev = (a_wr*(b_away_odds-1)*100) - ((1-a_wr)*100)
-        st.session_state["b_result"] = {
-            "h_wr": h_wr, "a_wr": a_wr, "h_ev": h_ev, "a_ev": a_ev,
-            "h_odds": b_home_odds, "a_odds": b_away_odds,
-            "h_name": b_home_name, "a_name": b_away_name,
-        }
-
+        h_wr = b_winrate(b_home_vars, score_weights_b); a_wr = b_winrate(b_away_vars, score_weights_b)
+        h_ev = (h_wr*(b_home_odds-1)*100) - ((1-h_wr)*100); a_ev = (a_wr*(b_away_odds-1)*100) - ((1-a_wr)*100)
+        st.session_state["b_result"] = {"h_wr": h_wr, "a_wr": a_wr, "h_ev": h_ev, "a_ev": a_ev, "h_odds": b_home_odds, "a_odds": b_away_odds, "h_name": b_home_name, "a_name": b_away_name}
     if "b_result" in st.session_state:
-        r = st.session_state["b_result"]
-        st.divider()
+        r = st.session_state["b_result"]; st.divider()
         col5, col6 = st.columns(2)
         with col5:
-            st.subheader(b_home_name)
-            st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}")
-            st.metric("期望值 (EV)",   f"RM{r['h_ev']:.2f}")
-            st.metric("隐含概率",       f"{1/r['h_odds']:.1%}")
+            st.subheader(b_home_name); st.metric("加权胜率 (WP)", f"{r['h_wr']:.1%}"); st.metric("期望值 (EV)", f"RM{r['h_ev']:.2f}"); st.metric("隐含概率", f"{1/r['h_odds']:.1%}")
             if r["h_ev"] > 0: st.success("✅ 正期望值")
-            else:             st.error("❌ 负期望值")
+            else: st.error("❌ 负期望值")
         with col6:
-            st.subheader(b_away_name)
-            st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}")
-            st.metric("期望值 (EV)",   f"RM{r['a_ev']:.2f}")
-            st.metric("隐含概率",       f"{1/r['a_odds']:.1%}")
+            st.subheader(b_away_name); st.metric("加权胜率 (WP)", f"{r['a_wr']:.1%}"); st.metric("期望值 (EV)", f"RM{r['a_ev']:.2f}"); st.metric("隐含概率", f"{1/r['a_odds']:.1%}")
             if r["a_ev"] > 0: st.success("✅ 正期望值")
-            else:             st.error("❌ 负期望值")
+            else: st.error("❌ 负期望值")
         st.divider()
         if st.button("💾 保存记录", key="b_save"):
-            record = {
-                "日期": str(date.today()), "运动": "篮球",
-                "主队": r["h_name"], "客队": r["a_name"],
-                "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": "N/A",
-                "客队加权胜率": f"{r['a_wr']:.1%}",
-                "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A",
-                "客队期望值": f"{r['a_ev']:.2f}",
-                "主队隐含概率": f"{1/r['h_odds']:.1%}", "平局隐含概率": "N/A",
-                "客队隐含概率": f"{1/r['a_odds']:.1%}",
-                "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}", "平局优势差距": "N/A",
-                "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}",
-                "比赛结果": "", "甜蜜点": "", "建议下注": "—", "押注方向": "—", "投注结果": "",
-            }
-            save_to_sheet(record)
-            st.success("✅ 记录已保存！")
+            record = {"日期": str(date.today()), "运动": "篮球", "主队": r["h_name"], "客队": r["a_name"], "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": "N/A", "客队加权胜率": f"{r['a_wr']:.1%}", "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A", "客队期望值": f"{r['a_ev']:.2f}", "主队隐含概率": f"{1/r['h_odds']:.1%}", "平局隐含概率": "N/A", "客队隐含概率": f"{1/r['a_odds']:.1%}", "主队优势差距": f"{r['h_wr'] - 1/r['h_odds']:+.1%}", "平局优势差距": "N/A", "客队优势差距": f"{r['a_wr'] - 1/r['a_odds']:+.1%}", "比赛结果": "", "甜蜜点": "", "建议下注": "—", "押注方向": "—", "投注结果": ""}
+            save_to_sheet(record); st.success("✅ 记录已保存！")
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 4: 棒球
-# ══════════════════════════════════════════════════════════════════════════════
 with tab4:
     st.header("⚾ 棒球期望值分析器")
-
-    MLB_TEAMS = [
-        "Arizona Diamondbacks", "Atlanta Braves", "Baltimore Orioles",
-        "Boston Red Sox", "Chicago Cubs", "Chicago White Sox",
-        "Cincinnati Reds", "Cleveland Guardians", "Colorado Rockies",
-        "Detroit Tigers", "Houston Astros", "Kansas City Royals",
-        "Los Angeles Angels", "Los Angeles Dodgers", "Miami Marlins",
-        "Milwaukee Brewers", "Minnesota Twins", "New York Mets",
-        "New York Yankees", "Oakland Athletics", "Philadelphia Phillies",
-        "Pittsburgh Pirates", "San Diego Padres", "San Francisco Giants",
-        "Seattle Mariners", "St. Louis Cardinals", "Tampa Bay Rays",
-        "Texas Rangers", "Toronto Blue Jays", "Washington Nationals",
-    ]
-
+    MLB_TEAMS = ["Arizona Diamondbacks","Atlanta Braves","Baltimore Orioles","Boston Red Sox","Chicago Cubs","Chicago White Sox","Cincinnati Reds","Cleveland Guardians","Colorado Rockies","Detroit Tigers","Houston Astros","Kansas City Royals","Los Angeles Angels","Los Angeles Dodgers","Miami Marlins","Milwaukee Brewers","Minnesota Twins","New York Mets","New York Yankees","Oakland Athletics","Philadelphia Phillies","Pittsburgh Pirates","San Diego Padres","San Francisco Giants","Seattle Mariners","St. Louis Cardinals","Tampa Bay Rays","Texas Rangers","Toronto Blue Jays","Washington Nationals"]
     col1, col2 = st.columns(2)
     with col1:
         bb_home_name = st.selectbox("主队", MLB_TEAMS, key="bb_home_name")
@@ -609,213 +408,116 @@ with tab4:
     with col2:
         bb_away_name = st.selectbox("客队", MLB_TEAMS, index=1, key="bb_away_name")
         bb_away_odds = st.number_input("客队赔率", min_value=1.01, value=1.90, step=0.01, key="bb_away_odds")
-
-    st.divider()
-    st.subheader("⚾ 先发投手战绩")
-    st.caption("填本季战绩，格式：胜场-负场（如 3-2）")
+    st.divider(); st.subheader("⚾ 先发投手战绩"); st.caption("填本季战绩，格式：胜场-负场（如 3-2）")
     col3, col4 = st.columns(2)
-    with col3:
-        bb_home_pitcher = st.text_input(f"{bb_home_name} 投手", placeholder="如 3-2", key="bb_home_pitcher")
-    with col4:
-        bb_away_pitcher = st.text_input(f"{bb_away_name} 投手", placeholder="如 1-1", key="bb_away_pitcher")
-
+    with col3: bb_home_pitcher = st.text_input(f"{bb_home_name} 投手", placeholder="如 3-2", key="bb_home_pitcher")
+    with col4: bb_away_pitcher = st.text_input(f"{bb_away_name} 投手", placeholder="如 1-1", key="bb_away_pitcher")
     def parse_pitcher(record_str):
         record_str = record_str.strip()
-        for prefix in ["W,", "L,", "W ", "L ", "W", "L"]:
-            if record_str.upper().startswith(prefix.upper()):
-                record_str = record_str[len(prefix):].strip()
-        if not re.match(r'^\d+-\d+$', record_str):
-            return None, 0
+        for prefix in ["W,","L,","W ","L ","W","L"]:
+            if record_str.upper().startswith(prefix.upper()): record_str = record_str[len(prefix):].strip()
+        if not re.match(r'^\d+-\d+$', record_str): return None, 0
         try:
-            w, l = map(int, record_str.split('-'))
-            total = w + l
+            w, l = map(int, record_str.split('-')); total = w + l
             return (w / total if total > 0 else 0.5), total
-        except:
-            return None, 0
-
+        except: return None, 0
     def pitcher_weight(total_games):
-        if total_games <= 2:   return 0.10
+        if total_games <= 2: return 0.10
         elif total_games <= 4: return 0.15
         elif total_games <= 7: return 0.20
-        else:                  return 0.25
-
-    st.divider()
-    st.subheader("📊 近期比赛记录（最近5场）")
-    st.caption("最新的填第1场，从新到旧")
-
+        else: return 0.25
+    st.divider(); st.subheader("📊 近期比赛记录（最近5场）"); st.caption("最新的填第1场，从新到旧")
     col5, col6 = st.columns(2)
     bb_home_vars, bb_away_vars = [], []
-
     with col5:
         st.markdown(f"**🏠 {bb_home_name}**")
         for i in range(5):
             label = "最新" if i == 0 else f"第{i+1}场"
-            result = st.selectbox(label, ["赢", "输"], key=f"bbh_{i}")
-            bb_home_vars.append(result)
-
+            result = st.selectbox(label, ["赢", "输"], key=f"bbh_{i}"); bb_home_vars.append(result)
     with col6:
         st.markdown(f"**✈️ {bb_away_name}**")
         for i in range(5):
             label = "最新" if i == 0 else f"第{i+1}场"
-            result = st.selectbox(label, ["赢", "输"], key=f"bba_{i}")
-            bb_away_vars.append(result)
-
+            result = st.selectbox(label, ["赢", "输"], key=f"bba_{i}"); bb_away_vars.append(result)
     def calc_baseball_wp(match_results, pitcher_str, is_home):
-        weights = [1.0, 0.9, 0.8, 0.7, 0.6]
-        total_w = win_w = 0
+        weights = [1.0, 0.9, 0.8, 0.7, 0.6]; total_w = win_w = 0
         for i, r in enumerate(match_results):
-            w = weights[i]; total_w += w
-            win_w += w if r == "赢" else 0
+            w = weights[i]; total_w += w; win_w += w if r == "赢" else 0
         team_wr = win_w / total_w if total_w > 0 else 0.5
-        if is_home:
-            team_wr = min(team_wr * 1.08, 0.99)
+        if is_home: team_wr = min(team_wr * 1.08, 0.99)
         p_wr, p_games = parse_pitcher(pitcher_str)
         if p_wr is not None and p_games > 0:
-            p_w = pitcher_weight(p_games)
-            final_wr = (team_wr * (1 - p_w)) + (p_wr * p_w)
-        else:
-            final_wr = team_wr
-        return final_wr
-
+            p_w = pitcher_weight(p_games); return (team_wr * (1 - p_w)) + (p_wr * p_w)
+        return team_wr
     if st.button("⚡ 计算", key="bb_calc", type="primary"):
-        h_wr = calc_baseball_wp(bb_home_vars, bb_home_pitcher, True)
-        a_wr = calc_baseball_wp(bb_away_vars, bb_away_pitcher, False)
-        h_ev = (h_wr * (bb_home_odds - 1) * 100) - ((1 - h_wr) * 100)
-        a_ev = (a_wr * (bb_away_odds - 1) * 100) - ((1 - a_wr) * 100)
-        h_p_wr, h_p_games = parse_pitcher(bb_home_pitcher)
-        a_p_wr, a_p_games = parse_pitcher(bb_away_pitcher)
-        st.session_state["bb_result"] = {
-            "h_wr": h_wr, "a_wr": a_wr, "h_ev": h_ev, "a_ev": a_ev,
-            "h_odds": bb_home_odds, "a_odds": bb_away_odds,
-            "h_name": bb_home_name, "a_name": bb_away_name,
-            "h_p_wr": h_p_wr, "h_p_games": h_p_games,
-            "a_p_wr": a_p_wr, "a_p_games": a_p_games,
-        }
-
+        h_wr = calc_baseball_wp(bb_home_vars, bb_home_pitcher, True); a_wr = calc_baseball_wp(bb_away_vars, bb_away_pitcher, False)
+        h_ev = (h_wr*(bb_home_odds-1)*100) - ((1-h_wr)*100); a_ev = (a_wr*(bb_away_odds-1)*100) - ((1-a_wr)*100)
+        h_p_wr, h_p_games = parse_pitcher(bb_home_pitcher); a_p_wr, a_p_games = parse_pitcher(bb_away_pitcher)
+        st.session_state["bb_result"] = {"h_wr": h_wr, "a_wr": a_wr, "h_ev": h_ev, "a_ev": a_ev, "h_odds": bb_home_odds, "a_odds": bb_away_odds, "h_name": bb_home_name, "a_name": bb_away_name, "h_p_wr": h_p_wr, "h_p_games": h_p_games, "a_p_wr": a_p_wr, "a_p_games": a_p_games}
     if "bb_result" in st.session_state:
-        r = st.session_state["bb_result"]
-        st.divider()
-        h_impl = 1 / r["h_odds"] * 100
-        a_impl = 1 / r["a_odds"] * 100
-
+        r = st.session_state["bb_result"]; st.divider()
+        h_impl = 1/r["h_odds"]*100; a_impl = 1/r["a_odds"]*100
         col7, col8 = st.columns(2)
         with col7:
-            st.subheader(f"🏠 {r['h_name']}")
-            st.metric("综合胜率 (WP)", f"{r['h_wr']:.1%}")
-            st.metric("期望值 (EV)",   f"RM{r['h_ev']:.2f}")
-            st.metric("隐含概率",       f"{h_impl:.1f}%")
-            if r["h_p_wr"] is not None:
-                pw = pitcher_weight(r["h_p_games"])
-                st.caption(f"投手胜率 {r['h_p_wr']:.0%}（{r['h_p_games']}场，权重{pw:.0%}）")
+            st.subheader(f"🏠 {r['h_name']}"); st.metric("综合胜率 (WP)", f"{r['h_wr']:.1%}"); st.metric("期望值 (EV)", f"RM{r['h_ev']:.2f}"); st.metric("隐含概率", f"{h_impl:.1f}%")
+            if r["h_p_wr"] is not None: st.caption(f"投手胜率 {r['h_p_wr']:.0%}（{r['h_p_games']}场，权重{pitcher_weight(r['h_p_games']):.0%}）")
             if r["h_ev"] > 0: st.success("✅ 正期望值")
-            else:             st.error("❌ 负期望值")
+            else: st.error("❌ 负期望值")
         with col8:
-            st.subheader(f"✈️ {r['a_name']}")
-            st.metric("综合胜率 (WP)", f"{r['a_wr']:.1%}")
-            st.metric("期望值 (EV)",   f"RM{r['a_ev']:.2f}")
-            st.metric("隐含概率",       f"{a_impl:.1f}%")
-            if r["a_p_wr"] is not None:
-                pw = pitcher_weight(r["a_p_games"])
-                st.caption(f"投手胜率 {r['a_p_wr']:.0%}（{r['a_p_games']}场，权重{pw:.0%}）")
+            st.subheader(f"✈️ {r['a_name']}"); st.metric("综合胜率 (WP)", f"{r['a_wr']:.1%}"); st.metric("期望值 (EV)", f"RM{r['a_ev']:.2f}"); st.metric("隐含概率", f"{a_impl:.1f}%")
+            if r["a_p_wr"] is not None: st.caption(f"投手胜率 {r['a_p_wr']:.0%}（{r['a_p_games']}场，权重{pitcher_weight(r['a_p_games']):.0%}）")
             if r["a_ev"] > 0: st.success("✅ 正期望值")
-            else:             st.error("❌ 负期望值")
-
+            else: st.error("❌ 负期望值")
         st.divider()
-        if r["a_ev"] >= 100:
-            st.success(f"🔄 EV逆向信号（强）：客队EV = {r['a_ev']:.1f} ≥ 100 → 参考押 **{r['h_name']}** 独赢（历史约70%）")
-        elif r["a_ev"] >= 50:
-            st.info(f"🔄 EV逆向信号：客队EV = {r['a_ev']:.1f} ≥ 50 → 参考押 **{r['h_name']}** 独赢（历史约64%）")
-        elif r["h_ev"] >= 100:
-            st.success(f"🔄 EV逆向信号（强）：主队EV = {r['h_ev']:.1f} ≥ 100 → 参考押 **{r['a_name']}** 独赢（历史约70%）")
-        elif r["h_ev"] >= 50:
-            st.info(f"🔄 EV逆向信号：主队EV = {r['h_ev']:.1f} ≥ 50 → 参考押 **{r['a_name']}** 独赢（历史约64%）")
-        else:
-            st.warning("⚪ 无EV逆向信号（主客队EV均低于50）")
-
-        st.divider()
-        st.subheader("📊 相似历史比赛参考")
+        if r["a_ev"] >= 100: st.success(f"🔄 EV逆向信号（强）：客队EV = {r['a_ev']:.1f} ≥ 100 → 参考押 **{r['h_name']}** 独赢（历史约70%）")
+        elif r["a_ev"] >= 50: st.info(f"🔄 EV逆向信号：客队EV = {r['a_ev']:.1f} ≥ 50 → 参考押 **{r['h_name']}** 独赢（历史约64%）")
+        elif r["h_ev"] >= 100: st.success(f"🔄 EV逆向信号（强）：主队EV = {r['h_ev']:.1f} ≥ 100 → 参考押 **{r['a_name']}** 独赢（历史约70%）")
+        elif r["h_ev"] >= 50: st.info(f"🔄 EV逆向信号：主队EV = {r['h_ev']:.1f} ≥ 50 → 参考押 **{r['a_name']}** 独赢（历史约64%）")
+        else: st.warning("⚪ 无EV逆向信号（主客队EV均低于50）")
+        st.divider(); st.subheader("📊 相似历史比赛参考")
         history_df = load_from_sheet()
         similar = find_similar_matches(history_df, "棒球", match_val=r["a_wr"]*100, match_col="客队加权胜率", dist_label="距离(WP差)", top_n=15, h_wr_val=r["h_wr"]*100)
         show_similar_table(similar, sport="棒球", session_key="bb_similar_stats")
-
         st.divider()
         if st.button("💾 保存记录", key="bb_save"):
-            record = {
-                "日期": str(date.today()), "运动": "棒球",
-                "主队": r["h_name"], "客队": r["a_name"],
-                "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": "N/A",
-                "客队加权胜率": f"{r['a_wr']:.1%}",
-                "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A",
-                "客队期望值": f"{r['a_ev']:.2f}",
-                "主队隐含概率": f"{h_impl:.1f}%", "平局隐含概率": "N/A",
-                "客队隐含概率": f"{a_impl:.1f}%",
-                "主队优势差距": f"{r['h_wr']*100 - h_impl:+.1f}%", "平局优势差距": "N/A",
-                "客队优势差距": f"{r['a_wr']*100 - a_impl:+.1f}%",
-                "比赛结果": "", "甜蜜点": st.session_state.get("bb_similar_stats", ""),
-                "建议下注": "", "押注方向": "", "投注结果": "",
-            }
-            save_to_sheet(record)
-            st.success("✅ 记录已保存！")
+            record = {"日期": str(date.today()), "运动": "棒球", "主队": r["h_name"], "客队": r["a_name"], "主队加权胜率": f"{r['h_wr']:.1%}", "平局加权胜率": "N/A", "客队加权胜率": f"{r['a_wr']:.1%}", "主队期望值": f"{r['h_ev']:.2f}", "平局期望值": "N/A", "客队期望值": f"{r['a_ev']:.2f}", "主队隐含概率": f"{h_impl:.1f}%", "平局隐含概率": "N/A", "客队隐含概率": f"{a_impl:.1f}%", "主队优势差距": f"{r['h_wr']*100-h_impl:+.1f}%", "平局优势差距": "N/A", "客队优势差距": f"{r['a_wr']*100-a_impl:+.1f}%", "比赛结果": "", "甜蜜点": st.session_state.get("bb_similar_stats", ""), "建议下注": "", "押注方向": "", "投注结果": ""}
+            save_to_sheet(record); st.success("✅ 记录已保存！")
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 5: 记录
-# ══════════════════════════════════════════════════════════════════════════════
 with tab5:
     st.header("📋 历史记录")
     if st.button("🔄 刷新记录", key="refresh"): st.rerun()
-
     df = load_from_sheet()
-    if df.empty:
-        st.info("还没有记录！")
+    if df.empty: st.info("还没有记录！")
     else:
         col1, col2 = st.columns(2)
         with col1: st.metric("总记录", len(df))
         with col2: st.metric("今日记录", len(df[df["日期"] == str(date.today())]))
-
-        st.divider()
-        st.subheader("✏️ 填写比赛结果")
-        st.caption("填写比分后，这场比赛会成为日后「相似比赛参考」的数据来源")
-
+        st.divider(); st.subheader("✏️ 填写比赛结果"); st.caption("填写比分后，这场比赛会成为日后「相似比赛参考」的数据来源")
         missing = df[(df["比赛结果"].astype(str).str.strip() == "") | (df["比赛结果"].isna())]
-        if missing.empty:
-            st.success("所有记录都已填写结果！")
+        if missing.empty: st.success("所有记录都已填写结果！")
         else:
             st.caption(f"还有 {len(missing)} 场记录未填写结果")
-            missing_recent = missing.tail(20)
-            for idx, row in missing_recent.iloc[::-1].iterrows():
+            for idx, row in missing.tail(20).iloc[::-1].iterrows():
                 with st.expander(f"{row['日期']} | {row['运动']} | {row['主队']} vs {row['客队']}"):
-                    score_input = st.text_input(
-                        "比赛结果（格式：主队比分-客队比分，如 2-1）",
-                        value="", key=f"result_fill_{idx}"
-                    )
+                    score_input = st.text_input("比赛结果（格式：主队比分-客队比分，如 2-1）", value="", key=f"result_fill_{idx}")
                     if st.button("保存结果", key=f"save_result_{idx}"):
                         if re.match(r"^\d+\s*-\s*\d+$", score_input.strip()):
                             try:
-                                sheet = get_sheet()
-                                col_idx = HEADERS.index("比赛结果") + 1
-                                sheet.update_cell(idx + 2, col_idx, score_input.strip())
-                                st.success("✅ 已保存！")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"保存失败: {e}")
-                        else:
-                            st.warning("格式错误，请输入「数字-数字」，如 2-1")
-
-        st.divider()
-        st.subheader("📄 完整记录")
-        st.dataframe(df, use_container_width=True)
-        csv = df.to_csv(index=False).encode("utf-8")
-        st.download_button("⬇️ 下载记录", csv, "records.csv", "text/csv")
-
+                                sheet = get_sheet(); col_idx = HEADERS.index("比赛结果") + 1
+                                sheet.update_cell(idx + 2, col_idx, score_input.strip()); st.success("✅ 已保存！"); st.rerun()
+                            except Exception as e: st.error(f"保存失败: {e}")
+                        else: st.warning("格式错误，请输入「数字-数字」，如 2-1")
+        st.divider(); st.subheader("📄 完整记录"); st.dataframe(df, use_container_width=True)
+        csv = df.to_csv(index=False).encode("utf-8"); st.download_button("⬇️ 下载记录", csv, "records.csv", "text/csv")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 让球盘 Sheet2 工具函数
+# 让球盘 Sheet2
 # ══════════════════════════════════════════════════════════════════════════════
 HANDICAP_HEADERS = [
     "日期", "赛事",
     "电竞版_方向", "电竞版_主WP", "电竞版_客WP", "电竞版_历史参考",
-    "足球版_方向", "足球版_主WP", "足球版_客WP", "足球版_历史参考1", "足球版_历史参考2",
-    "实际结果", "赢/输"
+    "足球版_方向", "足球版_主WP", "足球版_客WP", "足球版_历史参考",
+    "实际结果", "赢/输", "信号"
 ]
 
 def get_sheet2():
@@ -849,78 +551,83 @@ def load_from_sheet2():
             if h not in df.columns:
                 df[h] = ""
         return df
-    except Exception as e:
+    except:
         return pd.DataFrame(columns=HANDICAP_HEADERS)
 
-# ── 让球盘辅助函数 ─────────────────────────────────────────────────────────────
 def _ref_direction(score_str):
     score_str = str(score_str).strip()
-    if not re.match(r'^\d+-\d+$', score_str):
-        return None
+    if not re.match(r'^\d+-\d+$', score_str): return None
     h, a = map(int, score_str.split('-'))
-    if h > a:   return "F"
+    if h > a: return "F"
     elif a > h: return "C"
-    else:       return "D"
+    else: return "D"
 
 def _ref_goals(score_str):
     score_str = str(score_str).strip()
-    if not re.match(r'^\d+-\d+$', score_str):
-        return None
+    if not re.match(r'^\d+-\d+$', score_str): return None
     h, a = map(int, score_str.split('-'))
     return h + a
 
-def analyze_handicap_signals(e_dir, f_dir, e_ref, f_ref1, f_ref2):
+def analyze_handicap_signals(e_dir, f_dir, e_ref, f_ref):
+    """
+    e_dir: 电竞版方向 F/C
+    f_dir: 足球版方向 F/C
+    e_ref: 电竞版历史参考比分 如 1-0
+    f_ref: 足球版历史参考比分 如 2-1
+    三重确认 = e_dir == f_dir == e_ref方向 == f_ref方向
+    """
     signals = []
-    ref1_dir = _ref_direction(f_ref1)
-    ref2_dir = _ref_direction(f_ref2)
-    ref1_goals = _ref_goals(f_ref1)
-    ref2_goals = _ref_goals(f_ref2)
-    avg_goals = None
-    if ref1_goals is not None and ref2_goals is not None:
-        avg_goals = (ref1_goals + ref2_goals) / 2
+    e_ref_dir = _ref_direction(e_ref)
+    f_ref_dir = _ref_direction(f_ref)
+    e_ref_goals = _ref_goals(e_ref)
+    f_ref_goals = _ref_goals(f_ref)
 
-    # 1. 三重确认
-    refs_agree = (ref1_dir == ref2_dir and ref1_dir not in (None, "D"))
-    triple = (e_dir == f_dir and refs_agree and ref1_dir == f_dir)
+    avg_goals = None
+    if e_ref_goals is not None and f_ref_goals is not None:
+        avg_goals = (e_ref_goals + f_ref_goals) / 2
+
+    # 三重确认：四向一致（电竞方向、足球方向、电竞参考方向、足球参考方向）
+    triple = (
+        e_dir == f_dir and
+        e_ref_dir == f_dir and
+        f_ref_dir == f_dir and
+        f_dir not in (None, "D")
+    )
+
     if triple:
         if f_dir == "C":
             signals.append({"level": "skip", "msg": "⚠️ 三重确认C方向 → 历史胜率0%，强烈建议跳过或反押F", "rate": "0%"})
         else:
-            signals.append({"level": "gold", "msg": f"🏆 三重确认（电竞版=足球版=历史参考均为{f_dir}）→ 历史胜率86%", "rate": "86%"})
+            signals.append({"level": "gold", "msg": "🏆 三重确认（电竞版=足球版=两个参考均为F）→ 历史胜率86%", "rate": "86%"})
 
-    # 2. C方向警告
+    # C方向警告
     if f_dir == "C" and not triple:
         signals.append({"level": "warn", "msg": "🔄 足球版方向为C → 历史胜率仅33%，建议反押F（反押胜率67%）", "rate": "反押67%"})
 
-    # 3. F + 大球
+    # F + 大球（两个参考平均进球 > 3）
     if f_dir == "F" and avg_goals is not None and avg_goals > 3:
-        signals.append({"level": "gold", "msg": f"⚽ F方向 + 历史参考大球（均{avg_goals:.1f}球 > 3）→ 历史胜率81%", "rate": "81%"})
+        signals.append({"level": "gold", "msg": f"⚽ F方向 + 参考大球（均{avg_goals:.1f}球 > 3）→ 历史胜率81%", "rate": "81%"})
 
-    # 4. F + 小球 → 跳过
+    # F + 小球（≤2.5）→ 跳过
     if f_dir == "F" and avg_goals is not None and avg_goals <= 2.5:
-        signals.append({"level": "skip", "msg": f"💤 F方向 + 历史参考小球（均{avg_goals:.1f}球 ≤ 2.5）→ 历史胜率仅42%，建议跳过", "rate": "42%"})
+        signals.append({"level": "skip", "msg": f"💤 F方向 + 参考小球（均{avg_goals:.1f}球 ≤ 2.5）→ 历史胜率仅42%，建议跳过", "rate": "42%"})
 
-    # 5. 历史参考含平局
-    if ref1_dir == "D" or ref2_dir == "D":
+    # 历史参考含平局
+    if e_ref_dir == "D" or f_ref_dir == "D":
         signals.append({"level": "skip", "msg": "➖ 历史参考含平局比分 → 历史胜率44%，建议跳过", "rate": "44%"})
 
-    # 6. 两参考一致（非三重确认）
-    if refs_agree and ref1_dir == f_dir and not triple:
-        signals.append({"level": "good", "msg": f"✅ 两个历史参考方向一致（均为{ref1_dir}）→ 历史胜率75%", "rate": "75%"})
+    # 两个参考方向一致（非三重确认）
+    if e_ref_dir == f_ref_dir == f_dir and e_ref_dir not in (None, "D") and not triple:
+        signals.append({"level": "good", "msg": f"✅ 两个历史参考方向一致（均为{f_dir}）→ 历史胜率75%", "rate": "75%"})
 
-    # 7. 无信号
     if not signals:
         signals.append({"level": "neutral", "msg": "⚪ 无特殊信号，整体胜率约58%", "rate": "58%"})
 
     return signals
 
-# ══════════════════════════════════════════════════════════════════════════════
-# TAB 6: 让球盘分析
-# ══════════════════════════════════════════════════════════════════════════════
 with tab6:
     st.header("🎯 让球盘分析记录")
     st.caption("记录F/C让球盘数据，两个版本对比，自动统计胜率")
-
     st.subheader("➕ 新增记录")
 
     col1, col2 = st.columns(2)
@@ -929,7 +636,6 @@ with tab6:
         hc_date = st.date_input("日期", value=date.today(), key="hc_date")
 
     st.divider()
-
     col3, col4 = st.columns(2)
     with col3:
         st.markdown("**⚡ 电竞版**")
@@ -945,27 +651,22 @@ with tab6:
         hc_f_main = st.selectbox("主队是", ["F（让球方）", "C（吃球方）"], key="hc_f_main")
         hc_f_h = st.number_input("主队 WP%", 0, 100, 50, key="hc_f_h")
         hc_f_a = st.number_input("客队 WP%", 0, 100, 50, key="hc_f_a")
-        hc_f_ref1 = st.text_input("足球版历史参考比分1（较近）", placeholder="如 2-1", key="hc_f_ref1")
-        hc_f_ref2 = st.text_input("足球版历史参考比分2（较早）", placeholder="如 1-0", key="hc_f_ref2")
+        hc_f_ref = st.text_input("足球版历史参考比分", placeholder="如 2-1", key="hc_f_ref")
         f_dir = "F" if "F" in hc_f_main else "C"
         st.caption(f"→ {f_dir}方向  主{hc_f_h}% vs 客{hc_f_a}%")
 
     # 实时信号分析
     st.divider()
     st.subheader("🔍 信号分析")
-
-    signals = analyze_handicap_signals(e_dir, f_dir, hc_e_ref, hc_f_ref1, hc_f_ref2)
+    signals = analyze_handicap_signals(e_dir, f_dir, hc_e_ref, hc_f_ref)
+    signal_texts = []
     for sig in signals:
-        if sig["level"] == "gold":
-            st.success(sig["msg"])
-        elif sig["level"] == "good":
-            st.info(sig["msg"])
-        elif sig["level"] == "warn":
-            st.warning(sig["msg"])
-        elif sig["level"] == "skip":
-            st.error(sig["msg"])
-        else:
-            st.info(sig["msg"])
+        if sig["level"] == "gold": st.success(sig["msg"])
+        elif sig["level"] == "good": st.info(sig["msg"])
+        elif sig["level"] == "warn": st.warning(sig["msg"])
+        elif sig["level"] == "skip": st.error(sig["msg"])
+        else: st.info(sig["msg"])
+        signal_texts.append(sig["msg"])
 
     if e_dir == f_dir:
         st.info(f"✅ 两版本方向一致（均为{f_dir}）")
@@ -973,6 +674,7 @@ with tab6:
         st.warning(f"⚠️ 两版本方向不一致（电竞{e_dir} vs 足球{f_dir}）→ 信号冲突，谨慎")
 
     if st.button("💾 保存记录", key="hc_save", type="primary"):
+        signal_summary = " | ".join(signal_texts)
         record = {
             "日期": str(hc_date), "赛事": hc_sport,
             "电竞版_方向": e_dir,
@@ -980,17 +682,16 @@ with tab6:
             "电竞版_历史参考": hc_e_ref,
             "足球版_方向": f_dir,
             "足球版_主WP": f"{hc_f_h}%", "足球版_客WP": f"{hc_f_a}%",
-            "足球版_历史参考1": hc_f_ref1,
-            "足球版_历史参考2": hc_f_ref2,
-            "实际结果": "", "赢/输": ""
+            "足球版_历史参考": hc_f_ref,
+            "实际结果": "", "赢/输": "",
+            "信号": signal_summary
         }
         save_to_sheet2(record)
-        st.success("✅ 已保存！比赛结束后回来填实际结果。")
+        st.success("✅ 已保存！信号分析也已记录，比赛结束后回来填实际结果。")
 
     # 填写实际结果
     st.divider()
     st.subheader("✏️ 填写实际结果")
-
     hc_df = load_from_sheet2()
     if not hc_df.empty:
         missing = hc_df[hc_df["实际结果"].astype(str).str.strip() == ""]
@@ -999,18 +700,19 @@ with tab6:
         else:
             st.caption(f"还有 {len(missing)} 场未填写")
             for idx, row in missing.iloc[::-1].iterrows():
-                ref1 = row.get("足球版_历史参考1", "")
-                ref2 = row.get("足球版_历史参考2", "")
-                label = f"{row['日期']} | {row['赛事']} | 电竞{row['电竞版_方向']} | 足球{row['足球版_方向']} | 史分{ref1}/{ref2}"
+                e_ref_show = row.get("电竞版_历史参考", "")
+                f_ref_show = row.get("足球版_历史参考", "")
+                sig_show = str(row.get("信号", ""))[:40]
+                label = f"{row['日期']} | {row['赛事']} | 电竞{row['电竞版_方向']} | 足球{row['足球版_方向']} | 电{e_ref_show}/足{f_ref_show}"
                 with st.expander(label):
+                    if sig_show:
+                        st.caption(f"信号：{sig_show}...")
                     res_input = st.text_input("实际结果（如 2-1）", key=f"hc_res_{idx}")
                     if st.button("保存", key=f"hc_save_res_{idx}"):
                         if re.match(r"^\d+-\d+$", res_input.strip()):
                             s1, s2 = map(int, res_input.split("-"))
                             direction = row["足球版_方向"]
-                            if s1 > s2:   win_loss = "F"
-                            elif s1 < s2: win_loss = "C"
-                            else:         win_loss = "C"  # 平局算C
+                            win_loss = "F" if s1 > s2 else "C"  # 平局也算C
                             try:
                                 ws = get_sheet2()
                                 sheet_row = idx + 2
@@ -1030,7 +732,6 @@ with tab6:
     # 胜率统计
     st.divider()
     st.subheader("📊 胜率统计")
-
     hc_df = load_from_sheet2()
     completed = hc_df[hc_df["赢/输"].astype(str).isin(["F", "C"])].copy()
 
@@ -1038,9 +739,7 @@ with tab6:
         st.info("还没有完成的记录，继续加油记录！")
     else:
         completed["_win"] = completed.apply(lambda r: r["赢/输"] == r["足球版_方向"], axis=1)
-        n = len(completed)
-        wins = completed["_win"].sum()
-
+        n = len(completed); wins = completed["_win"].sum()
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("总场次", len(hc_df))
         c2.metric("✓ 赢", int(wins))
@@ -1048,8 +747,6 @@ with tab6:
         c4.metric("胜率", f"{wins/n:.1%}" if n > 0 else "—")
 
         st.divider()
-
-        # F vs C 胜率
         f_rows = completed[completed["足球版_方向"] == "F"]
         c_rows = completed[completed["足球版_方向"] == "C"]
         col_fc1, col_fc2 = st.columns(2)
@@ -1065,15 +762,14 @@ with tab6:
                     st.caption(f"💡 C反押F胜率：{1 - cw/len(c_rows):.1%}")
 
         st.divider()
-
         # 三重确认统计
         triple_rows = []
         for _, row in completed.iterrows():
-            r1d = _ref_direction(str(row.get("足球版_历史参考1", "")))
-            r2d = _ref_direction(str(row.get("足球版_历史参考2", "")))
             ed = str(row.get("电竞版_方向", ""))
             fd = str(row.get("足球版_方向", ""))
-            if ed == fd and r1d == fd and r2d == fd and fd != "D":
+            erd = _ref_direction(str(row.get("电竞版_历史参考", "")))
+            frd = _ref_direction(str(row.get("足球版_历史参考", "")))
+            if ed == fd == erd == frd and fd not in ("", "D"):
                 triple_rows.append(row)
         if triple_rows:
             tdf = pd.DataFrame(triple_rows)
@@ -1085,8 +781,8 @@ with tab6:
         fb_rows = []
         for _, row in completed.iterrows():
             if str(row.get("足球版_方向", "")) != "F": continue
-            g1 = _ref_goals(str(row.get("足球版_历史参考1", "")))
-            g2 = _ref_goals(str(row.get("足球版_历史参考2", "")))
+            g1 = _ref_goals(str(row.get("电竞版_历史参考", "")))
+            g2 = _ref_goals(str(row.get("足球版_历史参考", "")))
             if g1 is not None and g2 is not None and (g1 + g2) / 2 > 3:
                 fb_rows.append(row)
         if fb_rows:
