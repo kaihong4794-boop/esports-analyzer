@@ -591,9 +591,10 @@ def _wp_consistency_signal(sport, e_h, e_a, f_h, f_a):
 
     # 电竞60/40专项：优先检查，这是目前样本内最强的单一信号
     if sport == "电竞" and {round(e_h), round(e_a)} == {60, 40}:
+        team_40 = "主队" if e_h == 40 else "客队"
         signals.append({
             "level": "gold",
-            "msg": "🎯 电竞WP精确=60/40 → 劣势方(40%那队)历史胜率100%（n=7小样本）→ 强烈建议买低WP方",
+            "msg": f"🎯 电竞WP精确=60/40 → 买【{team_40}】(WP=40%那队)，历史胜率100%（n=7小样本）",
             "rate": "100%(反买)"
         })
 
@@ -617,31 +618,33 @@ def _wp_consistency_signal(sport, e_h, e_a, f_h, f_a):
         return signals
 
     same_sign = (e_gap > 0) == (f_gap_norm > 0)
+    fav_team = "主队" if e_gap > 0 else "客队"   # 电竞公式判定的优势方(以电竞公式方向为准)
+    dog_team = "客队" if e_gap > 0 else "主队"   # 电竞公式判定的劣势方
 
     if sport == "足球":
         if same_sign:
             signals.append({
                 "level": "good",
-                "msg": f"✅ 两公式方向一致（电竞{e_gap:+.0f} / 足球归一化{f_gap_norm:+.1f}）→ 优势方历史胜率69.0%，买优势方",
+                "msg": f"✅ 两公式方向一致（电竞{e_gap:+.0f} / 足球归一化{f_gap_norm:+.1f}）→ 买【{fav_team}】(优势方)，历史胜率69.0%",
                 "rate": "69.0%"
             })
         else:
             signals.append({
                 "level": "warn",
-                "msg": f"🔄 两公式打架（电竞{e_gap:+.0f} / 足球归一化{f_gap_norm:+.1f}）→ 劣势方历史胜率64.5%，建议反买劣势方",
+                "msg": f"🔄 两公式打架（电竞{e_gap:+.0f} / 足球归一化{f_gap_norm:+.1f}）→ 买【{dog_team}】(劣势方，反买)，历史胜率64.5%",
                 "rate": "64.5%(反买)"
             })
     else:  # 电竞
         if same_sign:
             signals.append({
                 "level": "warn",
-                "msg": f"🔄 电竞两公式一致（电竞{e_gap:+.0f} / 足球归一化{f_gap_norm:+.1f}）→ 电竞规律与足球相反，劣势方历史胜率63.6%，建议反买劣势方",
+                "msg": f"🔄 电竞两公式一致（电竞{e_gap:+.0f} / 足球归一化{f_gap_norm:+.1f}）→ 电竞规律与足球相反，买【{dog_team}】(劣势方，反买)，历史胜率63.6%",
                 "rate": "63.6%(反买)"
             })
         else:
             signals.append({
                 "level": "gold",
-                "msg": f"🎯 电竞两公式打架（电竞{e_gap:+.0f} / 足球归一化{f_gap_norm:+.1f}）→ 劣势方历史胜率80.0%，强烈建议反买劣势方",
+                "msg": f"🎯 电竞两公式打架（电竞{e_gap:+.0f} / 足球归一化{f_gap_norm:+.1f}）→ 买【{dog_team}】(劣势方，反买)，历史胜率80.0%，强烈建议",
                 "rate": "80.0%(反买)"
             })
 
