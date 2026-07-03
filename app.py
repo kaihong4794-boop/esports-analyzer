@@ -568,15 +568,63 @@ def _ref_goals(score_str):
     h, a = map(int, score_str.split('-'))
     return h + a
 
-def analyze_handicap_signals(e_dir, f_dir, e_ref, f_ref):
+def _wp_consistency_signal(e_h, e_a, f_h, f_a):
+    """
+    电竞公式 vs 足球公式 WP 归一化一致性检查
+    电竞公式主客=零和(主+客=100)，足球公式因含平局，主+客通常<100，
+    直接比较原始差距不公平，需先把足球公式归一化到同一量尺再比较方向。
+
+    电竞差距 = 主WP - 客WP（正=主队优势，负=客队优势）
+    足球相对差距 = (主WP-客WP) / (主WP+客WP) * 100，同样正负号规则
+
+    2026-07-03研究结论（73场足球样本）：
+    - 两者方向一致（同正或同负）→ 优势方胜率约71%
+    - 方向不一致（一正一负，或足球公式=0无方向）→ 优势方胜率约42.9%
+    """
+    e_gap = e_h - e_a
+    f_total = f_h + f_a
+    if f_total == 0:
+        return None
+    f_gap_norm = (f_h - f_a) / f_total * 100
+
+    if e_gap == 0 or f_gap_norm == 0:
+        return {
+            "level": "neutral",
+            "msg": "➖ 电竞或足球公式打平，无法判断一致性",
+            "rate": "N/A"
+        }
+
+    same_sign = (e_gap > 0) == (f_gap_norm > 0)
+    if same_sign:
+        return {
+            "level": "good",
+            "msg": f"✅ 两公式方向一致（电竞差距{e_gap:+.0f} / 足球归一化差距{f_gap_norm:+.1f}）→ 历史胜率约71%",
+            "rate": "71%"
+        }
+    else:
+        return {
+            "level": "warn",
+            "msg": f"⚠️ 两公式方向打架（电竞差距{e_gap:+.0f} / 足球归一化差距{f_gap_norm:+.1f}）→ 历史胜率仅约42.9%，建议跳过或降仓",
+            "rate": "42.9%"
+        }
+
+
+def analyze_handicap_signals(e_dir, f_dir, e_ref, f_ref, e_h=None, e_a=None, f_h=None, f_a=None):
     """
     e_dir: 电竞版方向 F/C
     f_dir: 足球版方向 F/C
     e_ref: 电竞版历史参考比分 如 1-0
     f_ref: 足球版历史参考比分 如 2-1
+    e_h, e_a, f_h, f_a: 电竞版主/客WP%，足球版主/客WP%（可选，传入后会启用WP归一化一致性检查）
     三重确认 = e_dir == f_dir == e_ref方向 == f_ref方向
     """
     signals = []
+
+    # WP归一化一致性检查（2026-07-03新增）
+    if None not in (e_h, e_a, f_h, f_a):
+        wp_sig = _wp_consistency_signal(e_h, e_a, f_h, f_a)
+        if wp_sig is not None:
+            signals.append(wp_sig)
     e_ref_dir = _ref_direction(e_ref)
     f_ref_dir = _ref_direction(f_ref)
     e_ref_goals = _ref_goals(e_ref)
@@ -658,7 +706,10 @@ with tab6:
     # 实时信号分析
     st.divider()
     st.subheader("🔍 信号分析")
-    signals = analyze_handicap_signals(e_dir, f_dir, hc_e_ref, hc_f_ref)
+    signals = analyze_handicap_signals(
+        e_dir, f_dir, hc_e_ref, hc_f_ref,
+        e_h=hc_e_h, e_a=hc_e_a, f_h=hc_f_h, f_a=hc_f_a
+    )
     signal_texts = []
     for sig in signals:
         if sig["level"] == "gold": st.success(sig["msg"])
