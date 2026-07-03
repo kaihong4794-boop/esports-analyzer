@@ -568,7 +568,7 @@ def _ref_goals(score_str):
     h, a = map(int, score_str.split('-'))
     return h + a
 
-def _wp_consistency_signal(e_h, e_a, f_h, f_a):
+def _wp_consistency_signal(sport, e_h, e_a, f_h, f_a):
     """
     电竞公式 vs 足球公式 WP 归一化一致性检查
     电竞公式主客=零和(主+客=100)，足球公式因含平局，主+客通常<100，
@@ -577,42 +577,82 @@ def _wp_consistency_signal(e_h, e_a, f_h, f_a):
     电竞差距 = 主WP - 客WP（正=主队优势，负=客队优势）
     足球相对差距 = (主WP-客WP) / (主WP+客WP) * 100，同样正负号规则
 
-    2026-07-03研究结论（73场足球样本）：
-    - 两者方向一致（同正或同负）→ 优势方胜率约71%
-    - 方向不一致（一正一负，或足球公式=0无方向）→ 优势方胜率约42.9%
+    2026-07-03研究结论（纯符号判定，足球73场 / 电竞16场）：
+    足球比赛：
+      - 两公式方向一致 → 优势方胜率69.0%（n=42），买优势方
+      - 两公式打架     → 优势方胜率仅35.5%，即劣势方64.5%（n=31），反买劣势方
+    电竞比赛：
+      - 两公式方向一致 → 优势方胜率仅36.4%，即劣势方63.6%（n=11），反买劣势方
+      - 两公式打架     → 优势方胜率仅20.0%，即劣势方80.0%（n=5），强烈反买劣势方
+      - 电竞WP精确=60/40（不分主客）→ 劣势方胜率100%（n=7，样本小但方向极一致）
+    电竞规律与足球完全相反：足球信号越"一致"越可信优势方，电竞反而是越"一致"越该反买劣势方。
     """
+    signals = []
+
+    # 电竞60/40专项：优先检查，这是目前样本内最强的单一信号
+    if sport == "电竞" and {round(e_h), round(e_a)} == {60, 40}:
+        signals.append({
+            "level": "gold",
+            "msg": "🎯 电竞WP精确=60/40 → 劣势方(40%那队)历史胜率100%（n=7小样本）→ 强烈建议买低WP方",
+            "rate": "100%(反买)"
+        })
+
     e_gap = e_h - e_a
     f_total = f_h + f_a
-    if f_total == 0:
-        return None
-    f_gap_norm = (f_h - f_a) / f_total * 100
-
-    if e_gap == 0 or f_gap_norm == 0:
-        return {
+    if f_total == 0 or e_gap == 0:
+        signals.append({
             "level": "neutral",
             "msg": "➖ 电竞或足球公式打平，无法判断一致性",
             "rate": "N/A"
-        }
+        })
+        return signals
+
+    f_gap_norm = (f_h - f_a) / f_total * 100
+    if f_gap_norm == 0:
+        signals.append({
+            "level": "neutral",
+            "msg": "➖ 足球公式打平，无法判断一致性",
+            "rate": "N/A"
+        })
+        return signals
 
     same_sign = (e_gap > 0) == (f_gap_norm > 0)
-    if same_sign:
-        return {
-            "level": "good",
-            "msg": f"✅ 两公式方向一致（电竞差距{e_gap:+.0f} / 足球归一化差距{f_gap_norm:+.1f}）→ 历史胜率约71%",
-            "rate": "71%"
-        }
-    else:
-        return {
-            "level": "warn",
-            "msg": f"⚠️ 两公式方向打架（电竞差距{e_gap:+.0f} / 足球归一化差距{f_gap_norm:+.1f}）→ 历史胜率仅约42.9%，建议跳过或降仓",
-            "rate": "42.9%"
-        }
+
+    if sport == "足球":
+        if same_sign:
+            signals.append({
+                "level": "good",
+                "msg": f"✅ 两公式方向一致（电竞{e_gap:+.0f} / 足球归一化{f_gap_norm:+.1f}）→ 优势方历史胜率69.0%，买优势方",
+                "rate": "69.0%"
+            })
+        else:
+            signals.append({
+                "level": "warn",
+                "msg": f"🔄 两公式打架（电竞{e_gap:+.0f} / 足球归一化{f_gap_norm:+.1f}）→ 劣势方历史胜率64.5%，建议反买劣势方",
+                "rate": "64.5%(反买)"
+            })
+    else:  # 电竞
+        if same_sign:
+            signals.append({
+                "level": "warn",
+                "msg": f"🔄 电竞两公式一致（电竞{e_gap:+.0f} / 足球归一化{f_gap_norm:+.1f}）→ 电竞规律与足球相反，劣势方历史胜率63.6%，建议反买劣势方",
+                "rate": "63.6%(反买)"
+            })
+        else:
+            signals.append({
+                "level": "gold",
+                "msg": f"🎯 电竞两公式打架（电竞{e_gap:+.0f} / 足球归一化{f_gap_norm:+.1f}）→ 劣势方历史胜率80.0%，强烈建议反买劣势方",
+                "rate": "80.0%(反买)"
+            })
+
+    return signals
 
 
-def analyze_handicap_signals(e_dir, f_dir, e_ref, f_ref, e_h=None, e_a=None, f_h=None, f_a=None):
+def analyze_handicap_signals(sport, e_dir, f_dir, e_ref, f_ref, e_h=None, e_a=None, f_h=None, f_a=None):
     """
-    e_dir: 电竞版方向 F/C
-    f_dir: 足球版方向 F/C
+    sport: "足球" 或 "电竞"，两者规则相反，必传
+    e_dir: 电竞版方向 F/C（暂未使用，保留参数兼容旧调用）
+    f_dir: 足球版方向 F/C（暂未使用，保留参数兼容旧调用）
     e_ref: 电竞版历史参考比分 如 1-0（暂未使用，保留参数兼容旧调用）
     f_ref: 足球版历史参考比分 如 2-1（暂未使用，保留参数兼容旧调用）
     e_h, e_a, f_h, f_a: 电竞版主/客WP%，足球版主/客WP%
@@ -621,14 +661,13 @@ def analyze_handicap_signals(e_dir, f_dir, e_ref, f_ref, e_h=None, e_a=None, f_h
     signals = []
 
     if None not in (e_h, e_a, f_h, f_a):
-        wp_sig = _wp_consistency_signal(e_h, e_a, f_h, f_a)
-        if wp_sig is not None:
-            signals.append(wp_sig)
+        signals.extend(_wp_consistency_signal(sport, e_h, e_a, f_h, f_a))
 
     if not signals:
         signals.append({"level": "neutral", "msg": "⚪ WP数据不完整，无法计算一致性", "rate": "N/A"})
 
     return signals
+
 
 with tab6:
     st.header("🎯 让球盘分析记录")
@@ -664,7 +703,7 @@ with tab6:
     st.divider()
     st.subheader("🔍 信号分析")
     signals = analyze_handicap_signals(
-        e_dir, f_dir, hc_e_ref, hc_f_ref,
+        hc_sport, e_dir, f_dir, hc_e_ref, hc_f_ref,
         e_h=hc_e_h, e_a=hc_e_a, f_h=hc_f_h, f_a=hc_f_a
     )
     signal_texts = []
