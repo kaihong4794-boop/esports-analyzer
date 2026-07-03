@@ -613,63 +613,20 @@ def analyze_handicap_signals(e_dir, f_dir, e_ref, f_ref, e_h=None, e_a=None, f_h
     """
     e_dir: 电竞版方向 F/C
     f_dir: 足球版方向 F/C
-    e_ref: 电竞版历史参考比分 如 1-0
-    f_ref: 足球版历史参考比分 如 2-1
-    e_h, e_a, f_h, f_a: 电竞版主/客WP%，足球版主/客WP%（可选，传入后会启用WP归一化一致性检查）
-    三重确认 = e_dir == f_dir == e_ref方向 == f_ref方向
+    e_ref: 电竞版历史参考比分 如 1-0（暂未使用，保留参数兼容旧调用）
+    f_ref: 足球版历史参考比分 如 2-1（暂未使用，保留参数兼容旧调用）
+    e_h, e_a, f_h, f_a: 电竞版主/客WP%，足球版主/客WP%
+    仅保留 WP归一化一致性检查（2026-07-03），旧的甜蜜点信号已移除（准确率不可靠）
     """
     signals = []
 
-    # WP归一化一致性检查（2026-07-03新增）
     if None not in (e_h, e_a, f_h, f_a):
         wp_sig = _wp_consistency_signal(e_h, e_a, f_h, f_a)
         if wp_sig is not None:
             signals.append(wp_sig)
-    e_ref_dir = _ref_direction(e_ref)
-    f_ref_dir = _ref_direction(f_ref)
-    e_ref_goals = _ref_goals(e_ref)
-    f_ref_goals = _ref_goals(f_ref)
-
-    avg_goals = None
-    if e_ref_goals is not None and f_ref_goals is not None:
-        avg_goals = (e_ref_goals + f_ref_goals) / 2
-
-    # 三重确认：四向一致（电竞方向、足球方向、电竞参考方向、足球参考方向）
-    triple = (
-        e_dir == f_dir and
-        e_ref_dir == f_dir and
-        f_ref_dir == f_dir and
-        f_dir not in (None, "D")
-    )
-
-    if triple:
-        if f_dir == "C":
-            signals.append({"level": "skip", "msg": "⚠️ 三重确认C方向 → 历史胜率0%，强烈建议跳过或反押F", "rate": "0%"})
-        else:
-            signals.append({"level": "gold", "msg": "🏆 三重确认（电竞版=足球版=两个参考均为F）→ 历史胜率86%", "rate": "86%"})
-
-    # C方向警告
-    if f_dir == "C" and not triple:
-        signals.append({"level": "warn", "msg": "🔄 足球版方向为C → 历史胜率仅33%，建议反押F（反押胜率67%）", "rate": "反押67%"})
-
-    # F + 大球（两个参考平均进球 > 3）
-    if f_dir == "F" and avg_goals is not None and avg_goals > 3:
-        signals.append({"level": "gold", "msg": f"⚽ F方向 + 参考大球（均{avg_goals:.1f}球 > 3）→ 历史胜率81%", "rate": "81%"})
-
-    # F + 小球（≤2.5）→ 跳过
-    if f_dir == "F" and avg_goals is not None and avg_goals <= 2.5:
-        signals.append({"level": "skip", "msg": f"💤 F方向 + 参考小球（均{avg_goals:.1f}球 ≤ 2.5）→ 历史胜率仅42%，建议跳过", "rate": "42%"})
-
-    # 历史参考含平局
-    if e_ref_dir == "D" or f_ref_dir == "D":
-        signals.append({"level": "skip", "msg": "➖ 历史参考含平局比分 → 历史胜率44%，建议跳过", "rate": "44%"})
-
-    # 两个参考方向一致（非三重确认）
-    if e_ref_dir == f_ref_dir == f_dir and e_ref_dir not in (None, "D") and not triple:
-        signals.append({"level": "good", "msg": f"✅ 两个历史参考方向一致（均为{f_dir}）→ 历史胜率75%", "rate": "75%"})
 
     if not signals:
-        signals.append({"level": "neutral", "msg": "⚪ 无特殊信号，整体胜率约58%", "rate": "58%"})
+        signals.append({"level": "neutral", "msg": "⚪ WP数据不完整，无法计算一致性", "rate": "N/A"})
 
     return signals
 
