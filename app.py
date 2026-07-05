@@ -696,6 +696,23 @@ with tab6:
         hc_date = st.date_input("日期", value=date.today(), key="hc_date")
 
     st.divider()
+    if st.button("🔄 一键带入 Tab1(电竞)/Tab2(足球) 最新计算结果", key="hc_autofill"):
+        filled_any = False
+        if "e_result" in st.session_state:
+            er = st.session_state["e_result"]
+            st.session_state["hc_e_h"] = round(er["h_wr"] * 100)
+            st.session_state["hc_e_a"] = round(er["a_wr"] * 100)
+            filled_any = True
+        if "f_result" in st.session_state:
+            fr = st.session_state["f_result"]
+            st.session_state["hc_f_h"] = round(fr["h_wr"] * 100)
+            st.session_state["hc_f_a"] = round(fr["a_wr"] * 100)
+            filled_any = True
+        if filled_any:
+            st.success("✅ 已带入！请检查下方数字，确认无误后再保存记录")
+        else:
+            st.warning("⚠️ 还没有可带入的结果，请先去 Tab1 或 Tab2 点「⚡计算」")
+
     col3, col4 = st.columns(2)
     with col3:
         st.markdown("**⚡ 电竞版**")
