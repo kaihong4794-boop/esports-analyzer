@@ -275,8 +275,9 @@ with tab2:
     with col4: f_draw_odds = st.number_input("平局赔率", min_value=1.01, value=3.0, step=0.01, key="f_draw_odds")
     with col5: f_away_odds = st.number_input("客队赔率", min_value=1.01, value=3.5, step=0.01, key="f_away_odds")
     st.divider()
-    num_matches_f = st.slider("最近几场比赛？", 1, 5, 5, key="f_slider")
+    num_matches_f = st.slider("最近几场比赛？", 1, 15, 15, key="f_slider")
     st.caption("填实际比分（自己得分-对手得分）| 球差≥3=3-0/0-3  球差2=2-0/0-2  球差1=2-1/1-2  平局=1-1")
+    st.caption("⚙️ 已改为15场窗口，且主客队WP会强制归一化到合计100%（去除平局噪音），与电竞公式风格一致")
     def score_to_football_esports(score_str):
         score_str = score_str.strip()
         if not re.match(r'^\d+-\d+$', score_str): return None
@@ -314,13 +315,21 @@ with tab2:
                 f_away_vars.append("2-1 赢")
     if st.button("⚡ 计算", key="f_calc", type="primary"):
         def f_winrate(vars, weights):
+            # 2026-07-05更新：改用指数衰减(0.93^i)取代线性衰减，支持15场窗口且不会变负数
             total_w = win_w = 0
             for i, v in enumerate(vars):
-                base = 1.0 - (i * 0.1); total_w += base
+                base = 0.93 ** i; total_w += base
                 win_w += (1 if "赢" in v else (0.5 if "平" in v else 0)) * weights[v] * base
             return win_w / total_w if total_w > 0 else 0
-        h_wr = f_winrate(f_home_vars, score_weights_esports)
-        a_wr = f_winrate(f_away_vars, score_weights_esports)
+        h_wr_raw = f_winrate(f_home_vars, score_weights_esports)
+        a_wr_raw = f_winrate(f_away_vars, score_weights_esports)
+        # 归一化：强制主客队WP合计=100%，去除平局造成的噪音，风格对齐电竞公式
+        wr_total = h_wr_raw + a_wr_raw
+        if wr_total > 0:
+            h_wr = h_wr_raw / wr_total
+            a_wr = a_wr_raw / wr_total
+        else:
+            h_wr = a_wr = 0.5
         h_ev = (h_wr * (f_home_odds-1)*100) - ((1-h_wr)*100)
         a_ev = (a_wr * (f_away_odds-1)*100) - ((1-a_wr)*100)
         st.session_state["f_result"] = {"h_wr": h_wr, "a_wr": a_wr, "h_ev": h_ev, "a_ev": a_ev, "h_odds": f_home_odds, "a_odds": f_away_odds, "d_odds": f_draw_odds, "h_name": f_home_name, "a_name": f_away_name}
@@ -653,23 +662,27 @@ def _wp_consistency_signal(sport, e_h, e_a, f_h, f_a):
 
 def analyze_handicap_signals(sport, e_dir, f_dir, e_ref, f_ref, e_h=None, e_a=None, f_h=None, f_a=None):
     """
-    sport: "足球" 或 "电竞"，两者规则相反，必传
     e_dir: 电竞版方向 F/C（暂未使用，保留参数兼容旧调用）
     f_dir: 足球版方向 F/C（暂未使用，保留参数兼容旧调用）
-    e_ref: 电竞版历史参考比分 如 1-0（暂未使用，保留参数兼容旧调用）
-    f_ref: 足球版历史参考比分 如 2-1（暂未使用，保留参数兼容旧调用）
-    e_h, e_a, f_h, f_a: 电竞版主/客WP%，足球版主/客WP%
-    仅保留 WP归一化一致性检查（2026-07-03），旧的甜蜜点信号已移除（准确率不可靠）
+    e_ref: 电竞版历史参考比分（暂未使用，保留参数兼容旧调用）
+    f_ref: 足球版历史参考比分（暂未使用，保留参数兼容旧调用）
+
+    2026-07-03 更新说明：
+    原本这里有一套"电竞公式 vs 足球公式 WP归一化一致性检查"，
+    但后来发现"足球版WP"这个输入框实际来源是「相似历史比赛参考(15场)」
+    的胜率统计（跟已判定不可靠的"甜蜜点"系统同源），不是真正独立的
+    加权公式计算结果。另外，比赛场地多为中立场，不该有主客场调整，
+    所以电竞公式和足球公式本来就不该是两套独立体系。
+    因此该信号的统计基础不成立，已撤除，避免继续误导下注判断。
+    如需参考，请回到原本验证过的方法：WP + EV 双条件、以及样本量足够大的
+    历史统计规则，不要依赖本函数。
     """
-    signals = []
+    return [{
+        "level": "neutral",
+        "msg": "⚪ WP一致性检查已撤除（数据来源存疑，详见代码注释），请参考原本的WP+EV方法自行判断",
+        "rate": "N/A"
+    }]
 
-    if None not in (e_h, e_a, f_h, f_a):
-        signals.extend(_wp_consistency_signal(sport, e_h, e_a, f_h, f_a))
-
-    if not signals:
-        signals.append({"level": "neutral", "msg": "⚪ WP数据不完整，无法计算一致性", "rate": "N/A"})
-
-    return signals
 
 
 with tab6:
