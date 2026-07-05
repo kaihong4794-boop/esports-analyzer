@@ -275,9 +275,8 @@ with tab2:
     with col4: f_draw_odds = st.number_input("平局赔率", min_value=1.01, value=3.0, step=0.01, key="f_draw_odds")
     with col5: f_away_odds = st.number_input("客队赔率", min_value=1.01, value=3.5, step=0.01, key="f_away_odds")
     st.divider()
-    num_matches_f = st.slider("最近几场比赛？", 1, 15, 15, key="f_slider")
+    num_matches_f = st.slider("最近几场比赛？", 1, 15, 5, key="f_slider")
     st.caption("填实际比分（自己得分-对手得分）| 球差≥3=3-0/0-3  球差2=2-0/0-2  球差1=2-1/1-2  平局=1-1")
-    st.caption("⚙️ 已改为15场窗口，且主客队WP会强制归一化到合计100%（去除平局噪音），与电竞公式风格一致")
     def score_to_football_esports(score_str):
         score_str = score_str.strip()
         if not re.match(r'^\d+-\d+$', score_str): return None
